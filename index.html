@@ -1,0 +1,1118 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#090c11">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>STOCKYARD 資材ロケーション管理</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<style>
+:root{
+  --bg:#090c11;--bg2:#0d121a;--panel:#121823;--panel2:#18202d;--line:rgba(255,255,255,.07);--line2:rgba(255,255,255,.13);
+  --text:#e9eef6;--muted:#8792a6;--dim:#4c5567;--accent:#5ef0c4;--accent-ink:#04231a;--blue:#7aa2ff;--warn:#ffbf5a;--danger:#ff6b7d;
+  --font:'Zen Kaku Gothic New',system-ui,-apple-system,'Hiragino Sans',sans-serif;--mono:'Space Grotesk',ui-monospace,'SF Mono',monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;color:var(--text);font-family:var(--font);background:var(--bg)}
+body{min-height:100vh;background:radial-gradient(1100px 560px at 85% -10%,rgba(94,240,196,.09),transparent 60%),radial-gradient(900px 520px at -15% 15%,rgba(122,162,255,.08),transparent 60%),var(--bg);background-attachment:fixed;-webkit-font-smoothing:antialiased}
+body.noscroll{overflow:hidden}
+button{font-family:inherit;color:inherit}
+.mono{font-family:var(--mono);letter-spacing:.01em}
+.muted{color:var(--muted)} .sm{font-size:12.5px} .warn{color:var(--warn)} .center{text-align:center}
+.ic{flex:none;display:block}
+.sp{flex:1}
+.row{display:flex;gap:8px;align-items:center;margin:12px 0;flex-wrap:wrap} .row.end{justify-content:flex-end}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.eyebrow{font-size:11px;letter-spacing:.12em;color:var(--muted);font-weight:700;display:flex;align-items:center;gap:6px}
+.big{font-size:26px;font-weight:700;line-height:1.1} .big small{font-size:12px;color:var(--muted);margin-left:3px;font-family:var(--font);font-weight:500}
+.xl{font-size:30px;font-weight:700;line-height:1}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--c,var(--accent));display:inline-block;box-shadow:0 0 10px var(--c,var(--accent))}
+
+/* top */
+#bar{position:fixed;top:0;left:0;height:2px;width:0;background:linear-gradient(90deg,var(--accent),var(--blue));z-index:90;transition:width .3s,opacity .3s;opacity:0}
+#bar.on{width:70%;opacity:1}
+.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:rgba(9,12,17,.72);backdrop-filter:blur(16px) saturate(150%);-webkit-backdrop-filter:blur(16px) saturate(150%);border-bottom:1px solid var(--line)}
+.brand{display:flex;gap:10px;align-items:center}
+.logo{width:34px;height:34px;border-radius:11px;background:linear-gradient(135deg,var(--accent),var(--blue));display:grid;place-items:center;color:#05140f;box-shadow:0 6px 20px rgba(94,240,196,.25)}
+.b1{font-family:var(--mono);font-weight:700;letter-spacing:.18em;font-size:14px}
+.b2{font-size:10.5px;color:var(--muted);letter-spacing:.1em}
+.top-r{display:flex;align-items:center;gap:10px}
+.sync{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+.sync.ok{background:var(--accent);box-shadow:0 0 10px var(--accent)} .sync.ng{background:var(--warn)}
+.lockbtn{display:flex;align-items:center;gap:5px;height:32px;padding:0 10px;border-radius:10px;border:1px solid var(--line2);background:var(--panel);color:var(--muted);font:600 12px var(--mono);cursor:pointer}
+.lockbtn.open{color:var(--accent-ink);background:var(--accent);border-color:transparent}
+
+main#view{max-width:1120px;margin:0 auto;padding:16px 16px calc(130px + env(safe-area-inset-bottom))}
+.page-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:6px 2px 14px}
+.page-h h1{margin:0;font-size:22px;font-weight:900;letter-spacing:.02em}
+
+/* nav */
+.nav{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));z-index:40;display:flex;align-items:center;gap:2px;padding:6px;border-radius:24px;background:rgba(18,24,35,.84);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid var(--line2);box-shadow:0 20px 50px rgba(0,0,0,.55);width:min(calc(100% - 24px),500px)}
+.nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0;border:0;background:none;color:var(--muted);font:500 10.5px var(--font);border-radius:18px;cursor:pointer;transition:.15s}
+.nav button.on{color:var(--text);background:rgba(255,255,255,.07)}
+.nav .scanbtn{flex:0 0 62px;height:62px;margin:-24px 4px 0;border-radius:21px;background:linear-gradient(135deg,var(--accent),#46c8ff);color:#04231a;box-shadow:0 10px 30px rgba(94,240,196,.38);justify-content:center}
+.nav .scanbtn.on{background:linear-gradient(135deg,#8ff7d8,#7fd9ff);color:#04231a}
+.nav .scanbtn span{display:none}
+
+/* buttons & inputs */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:42px;padding:0 16px;border-radius:12px;border:1px solid var(--line2);background:var(--panel2);color:var(--text);font:600 14px var(--font);cursor:pointer;transition:transform .12s,border-color .15s,background .15s;white-space:nowrap;text-decoration:none}
+.btn:hover{border-color:rgba(255,255,255,.26)}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;box-shadow:0 6px 18px rgba(94,240,196,.18)}
+.btn.danger{background:var(--danger);color:#2a0007;border-color:transparent}
+.btn.ghost{background:transparent}
+.btn.ghost.danger{background:transparent;color:var(--danger);border-color:rgba(255,107,125,.35)}
+.btn.sm{height:34px;padding:0 12px;font-size:13px;border-radius:10px}
+.btn.lg{height:54px;font-size:16px;border-radius:16px}
+.btn.block{width:100%}
+.btn:disabled{opacity:.35;pointer-events:none}
+.icon-btn{width:34px;height:34px;display:grid;place-items:center;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}
+.link{background:none;border:0;color:var(--accent);font:600 12px var(--font);cursor:pointer;padding:4px}
+.field{display:flex;flex-direction:column;gap:6px;margin:0 0 12px}
+.field>span{font-size:12px;color:var(--muted);font-weight:500}
+input,select,textarea{width:100%;height:46px;padding:0 14px;border-radius:12px;border:1px solid var(--line2);background:var(--bg2);color:var(--text);font:500 16px var(--font);outline:none;transition:border-color .15s,box-shadow .15s}
+textarea{height:auto;padding:12px 14px;resize:vertical}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 20px,calc(100% - 13px) 20px;background-size:5px 5px;background-repeat:no-repeat;padding-right:34px}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(94,240,196,.14)}
+input::placeholder,textarea::placeholder{color:var(--dim)}
+.check{display:flex;gap:8px;align-items:center;font-size:14px;margin:4px 0 8px;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--accent)}
+.switch{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line);border-radius:14px;margin-bottom:10px;cursor:pointer;background:rgba(255,255,255,.015)}
+.switch input{display:none}
+.switch i{flex:0 0 42px;height:24px;border-radius:99px;background:var(--dim);position:relative;transition:.2s;margin-top:1px}
+.switch i::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}
+.switch input:checked+i{background:var(--accent)} .switch input:checked+i::after{left:21px}
+.switch span{display:flex;flex-direction:column;gap:2px;font-size:14px} .switch small{color:var(--muted);font-size:12px}
+.swatches{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.swatches label{cursor:pointer} .swatches input{display:none}
+.swatches i{display:block;width:30px;height:30px;border-radius:10px;background:var(--c);border:2px solid transparent;box-shadow:inset 0 0 0 2px var(--bg)}
+.swatches input:checked+i{border-color:#fff}
+
+/* search & chips */
+.search{display:flex;align-items:center;gap:10px;height:50px;padding:0 16px;border-radius:16px;background:var(--panel);border:1px solid var(--line2);color:var(--muted)}
+.search input{border:0;background:none;height:100%;padding:0;box-shadow:none!important}
+.search.sm{height:44px;margin-bottom:10px}
+.chips{display:flex;gap:8px;margin:12px 0 0;flex-wrap:wrap}
+.chips.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-left:-16px;margin-right:-16px;padding:0 16px}
+.chips.scroll::-webkit-scrollbar{display:none}
+.chips.sub{margin-top:8px}
+.chip{flex:none;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:99px;border:1px solid var(--line2);background:transparent;color:var(--muted);font:600 13px var(--font);cursor:pointer}
+.chips.sub .chip{height:30px;font-size:12px}
+.chip.on{background:var(--text);color:var(--bg);border-color:transparent}
+
+/* kpi */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}
+.kpi{padding:12px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
+.kpi .v{font:700 22px var(--mono);margin-top:4px}
+.kpi.w .v{color:var(--warn)}
+@media(max-width:420px){.kpi{padding:10px}.kpi .v{font-size:19px}.kpi .eyebrow{font-size:10px;letter-spacing:.06em}}
+
+/* material cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.mcard{position:relative;padding:16px;border-radius:20px;background:linear-gradient(160deg,var(--panel2),var(--panel));border:1px solid var(--line);cursor:pointer;overflow:hidden;transition:transform .15s,border-color .15s}
+.mcard::before{content:'';position:absolute;inset:0 auto 0 0;width:3px;background:var(--c);opacity:.9}
+.mcard::after{content:'';position:absolute;right:-40px;top:-40px;width:120px;height:120px;border-radius:50%;background:var(--c);opacity:.06;filter:blur(10px)}
+.mcard:hover{border-color:var(--line2);transform:translateY(-2px)}
+.mcard.zero{opacity:.55}
+.mc-top{display:flex;justify-content:space-between;align-items:center}
+.tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em}
+.tag .dot{width:6px;height:6px}
+.lk{color:var(--warn);opacity:.8}
+.mc-name{font-size:17px;font-weight:700;margin-top:10px;line-height:1.35}
+.mc-code{font-size:12px;color:var(--muted);margin-top:2px}
+.mc-qty{margin-top:12px;display:flex;align-items:baseline;gap:4px}
+.mc-qty .mono{font-size:30px;font-weight:700;letter-spacing:-.01em}
+.mc-qty small{color:var(--muted);font-size:12px}
+.mc-bar{display:flex;gap:12px;font-size:12.5px;margin-top:6px;align-items:center}
+.mc-bar .fr{color:var(--warn)}
+.mc-locs{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.mc-locs span{display:inline-flex;align-items:center;gap:3px;font:600 11.5px var(--mono);padding:4px 8px;border-radius:8px;background:rgba(255,255,255,.05);color:var(--muted)}
+.mc-locs b{color:var(--text);margin-left:2px}
+.sect-h{display:flex;align-items:center;gap:8px;margin:18px 2px 10px;font-weight:700;font-size:13px;color:var(--muted);letter-spacing:.06em}
+.empty{padding:40px 16px;text-align:center;color:var(--muted);border:1px dashed var(--line2);border-radius:18px}
+.empty.sm{padding:18px}
+.fab{position:fixed;right:max(16px,calc(50% - 544px));bottom:calc(96px + env(safe-area-inset-bottom));z-index:35;display:flex;align-items:center;gap:6px;height:48px;padding:0 18px 0 14px;border-radius:16px;border:0;background:var(--text);color:var(--bg);font:700 14px var(--font);box-shadow:0 12px 30px rgba(0,0,0,.45);cursor:pointer}
+
+/* pallet rows */
+.prow{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:var(--bg2);border:1px solid var(--line);margin-bottom:6px;transition:border-color .15s,background .15s}
+.prow.sel{border-color:var(--accent);background:rgba(94,240,196,.07)}
+.ck{flex:none;width:26px;height:26px;border-radius:8px;border:1.5px solid var(--line2);background:transparent;display:grid;place-items:center;color:transparent;cursor:pointer}
+.prow.sel .ck{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.pr-main{flex:1;min-width:0;cursor:pointer}
+.pr-name{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr-sub{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:2px}
+.pr-sub span{display:inline-flex;align-items:center;gap:3px}
+.pr-sub .mono{color:var(--text);font-weight:600}
+.pr-qty{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.pr-qty .mono{font-size:17px;font-weight:700}
+.pr-qty small{font-size:10.5px;color:var(--muted)}
+.badge{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:6px;font-size:11px;font-weight:700;background:rgba(255,255,255,.08);color:var(--muted)}
+.badge.frac{background:rgba(255,191,90,.15);color:var(--warn)}
+.group{margin-top:16px}
+.group-h{display:flex;align-items:center;gap:8px;margin:0 2px 8px;font-size:13px;font-weight:700}
+.group-h>span:first-child{display:inline-flex;align-items:center;gap:5px}
+.group-h .muted{font-weight:500;font-size:12px}
+
+/* layers */
+.layer{position:fixed;inset:0;display:none}
+.layer.open{display:block}
+#sheet{z-index:50} #modal{z-index:60} #pin{z-index:66}
+.backdrop{position:absolute;inset:0;background:rgba(3,5,8,.62);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);animation:fade .2s}
+.panel{position:absolute;left:0;right:0;bottom:0;max-height:92vh;overflow:auto;overscroll-behavior:contain;background:var(--panel);border-radius:26px 26px 0 0;border:1px solid var(--line2);border-bottom:0;padding:8px 18px calc(20px + env(safe-area-inset-bottom));animation:up .28s cubic-bezier(.2,.8,.2,1)}
+.grab{width:40px;height:4px;border-radius:9px;background:var(--line2);margin:4px auto 6px}
+.x-btn{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:50%;border:0;background:rgba(255,255,255,.06);color:var(--muted);display:grid;place-items:center;cursor:pointer;z-index:2}
+@media(min-width:760px){
+  .panel{left:50%;top:50%;bottom:auto;right:auto;transform:translate(-50%,-50%);width:min(700px,92vw);max-height:86vh;border-radius:24px;border-bottom:1px solid var(--line2);animation:pop .22s;padding-top:18px}
+  .panel .grab{display:none}
+}
+.mpanel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(460px,calc(100vw - 24px));max-height:88vh;overflow:auto;background:var(--panel2);border:1px solid var(--line2);border-radius:22px;padding:20px;box-shadow:0 30px 80px rgba(0,0,0,.6);animation:pop .2s}
+@keyframes fade{from{opacity:0}}
+@keyframes up{from{transform:translateY(40px);opacity:0}}
+@keyframes pop{from{transform:translate(-50%,-47%);opacity:0}}
+.mt{font-size:18px;font-weight:900;margin-bottom:4px}
+.ms{font-size:13px;color:var(--muted);margin-bottom:16px}
+.mh{display:flex;gap:12px;align-items:flex-start;margin-bottom:14px}
+.mh-ic{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;background:rgba(255,191,90,.14);color:var(--warn);flex:none}
+.ferr,.err{color:var(--danger);font-size:13px;min-height:18px;margin:4px 0}
+form.busy{opacity:.6;pointer-events:none}
+.pin-input{text-align:center;font-size:28px;letter-spacing:.5em;height:60px}
+.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+.qty-row{display:flex;gap:8px} .qty-row .btn{width:52px;height:46px;font-size:20px} .qty-row input{font-size:20px;font-weight:700}
+
+/* sheet content */
+.sh-head{padding:6px 40px 4px 0}
+.sh-head h2{margin:8px 0 2px;font-size:22px;font-weight:900;line-height:1.3}
+.stats3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0 8px}
+.stats3>div{padding:12px;border-radius:14px;background:var(--bg2);border:1px solid var(--line)}
+.pal-hero{display:flex;gap:16px;align-items:center;margin:16px 0;padding:14px;border-radius:18px;background:var(--bg2);border:1px solid var(--line)}
+.qrbox{flex:none;width:96px;height:96px;padding:6px;border-radius:12px;background:#fff}
+.qrbox svg{width:100%;height:100%;display:block}
+.kv{display:grid;grid-template-columns:76px 1fr;gap:12px 10px;align-items:center;margin:8px 0 16px;font-size:14px}
+.kv .k{color:var(--muted);font-size:12px}
+.kv .v{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.kv .v.loc{font-weight:700;font-size:16px}
+.actions-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0}
+.act-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px 4px;border-radius:16px;border:1px solid var(--line2);background:var(--panel2);font:600 12px var(--font);cursor:pointer;color:var(--text)}
+.act-tile.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.act-tile:active{transform:scale(.96)}
+.hist{display:flex;flex-direction:column;gap:2px}
+.hrow{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px;align-items:baseline}
+.hrow .t{flex:none;width:82px;color:var(--muted);font-family:var(--mono);font-size:11.5px}
+.hrow .a{flex:none;font-weight:700;width:44px}
+.hrow .d{flex:1;color:var(--text)}
+.hrow .u{color:var(--muted)}
+.selbar{position:sticky;bottom:calc(-20px - env(safe-area-inset-bottom));margin:16px -18px calc(-20px - env(safe-area-inset-bottom));padding:12px 18px calc(14px + env(safe-area-inset-bottom));background:rgba(24,32,45,.96);backdrop-filter:blur(10px);border-top:1px solid var(--line2);display:none;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px}
+.selbar.show{display:flex}
+.selbar .mono{font-size:18px;font-weight:700;color:var(--accent)}
+
+/* scan */
+.seg{display:flex;padding:4px;border-radius:14px;background:var(--panel);border:1px solid var(--line);margin-bottom:12px}
+.seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;height:38px;border:0;border-radius:10px;background:none;color:var(--muted);font:700 13.5px var(--font);cursor:pointer}
+.seg button.on{background:var(--text);color:var(--bg)}
+.scan{max-width:560px;margin:0 auto}
+.cam{position:relative;aspect-ratio:1/1;max-height:54vh;width:100%;border-radius:26px;overflow:hidden;background:radial-gradient(circle at 50% 40%,#162030,#06080c);border:1px solid var(--line2)}
+.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s}
+.cam.live video{opacity:1}
+.reticle{position:absolute;inset:17%;pointer-events:none}
+.reticle i{position:absolute;width:36px;height:36px;border:3px solid var(--accent);filter:drop-shadow(0 0 8px rgba(94,240,196,.6))}
+.reticle i:nth-child(1){top:0;left:0;border-right:0;border-bottom:0;border-radius:14px 0 0 0}
+.reticle i:nth-child(2){top:0;right:0;border-left:0;border-bottom:0;border-radius:0 14px 0 0}
+.reticle i:nth-child(3){bottom:0;left:0;border-right:0;border-top:0;border-radius:0 0 0 14px}
+.reticle i:nth-child(4){bottom:0;right:0;border-left:0;border-top:0;border-radius:0 0 14px 0}
+.reticle b{position:absolute;left:8%;right:8%;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);top:10%;opacity:0}
+.cam.live .reticle b{animation:sweep 2.2s ease-in-out infinite;opacity:1}
+@keyframes sweep{50%{top:88%}}
+.cam-off{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;text-align:center}
+.cam.live .cam-off{display:none}
+.cam-msg{font-size:12.5px;color:var(--muted);max-width:280px;line-height:1.6}
+.cam-stop{position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;border:0;background:rgba(0,0,0,.5);color:#fff;display:none;place-items:center;cursor:pointer}
+.cam.live .cam-stop{display:grid}
+.cam-badge{position:absolute;left:12px;top:12px;padding:5px 10px;border-radius:99px;background:rgba(0,0,0,.55);font:700 11px var(--font);letter-spacing:.08em;display:none}
+.cam.live .cam-badge{display:block}
+.cam.flash::after{content:'';position:absolute;inset:0;background:rgba(94,240,196,.28);animation:fade .45s reverse forwards}
+.manual{display:flex;gap:8px;margin:12px 0}
+.manual input{height:46px;font-family:var(--mono);font-size:15px}
+.manual .btn{width:52px;padding:0;height:46px}
+.hint{display:flex;gap:10px;align-items:flex-start;padding:14px;border-radius:16px;background:var(--panel);border:1px solid var(--line);color:var(--muted);font-size:13px;line-height:1.6}
+.tray-head{display:flex;align-items:flex-end;justify-content:space-between;margin:16px 2px 10px}
+.tray-list{max-height:34vh;overflow:auto;margin-bottom:10px}
+.dest{display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;border:1.5px dashed var(--line2);margin-bottom:10px;cursor:pointer;color:var(--muted)}
+.dest>div{flex:1}
+.dest.set{border-style:solid;border-color:var(--blue);background:rgba(122,162,255,.08);color:var(--text)}
+.dest-name{font-size:16px;font-weight:700;margin-top:2px}
+
+/* locations */
+.lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.lcard{padding:14px;border-radius:16px;background:var(--panel);border:1px solid var(--line);cursor:pointer;transition:border-color .15s}
+.lcard:hover{border-color:var(--line2)}
+.lcard .code{font:700 20px var(--mono)}
+.lcard .nm{font-size:12px;color:var(--muted);min-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lcard .cnt{display:flex;align-items:baseline;gap:4px;margin-top:10px}
+.lcard .cnt b{font:700 22px var(--mono)}
+.lcard .cnt small{color:var(--muted);font-size:11px}
+.lcard .mats{font-size:11.5px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lcard.emptyloc{opacity:.5}
+.lcard.none{border-style:dashed}
+.lp-list{max-height:52vh;overflow:auto;margin:0 -4px;padding:0 4px}
+.lp-area{font-size:11px;letter-spacing:.1em;color:var(--muted);font-weight:700;margin:12px 0 6px}
+.lp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px}
+.lp-item{padding:10px 12px;border-radius:12px;border:1px solid var(--line2);background:var(--bg2);text-align:left;cursor:pointer}
+.lp-item b{display:block;font:700 15px var(--mono)} .lp-item small{color:var(--muted);font-size:11px}
+.lp-item.cur{border-color:var(--blue)}
+
+/* cards (admin/print) */
+.card{padding:16px;border-radius:20px;background:var(--panel);border:1px solid var(--line);margin-bottom:12px}
+.card-h{display:flex;align-items:center;gap:8px;font-weight:900;font-size:15px;margin-bottom:10px}
+.card-h .sp{flex:1}
+.lrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+.lrow:last-child{border-bottom:0}
+.lrow .main{flex:1;min-width:0}
+.lrow .sub{font-size:12px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;background:rgba(255,255,255,.06);color:var(--muted)}
+.pill.on{background:rgba(255,191,90,.14);color:var(--warn)}
+.pill.ok{background:rgba(94,240,196,.12);color:var(--accent)}
+.foot{text-align:center;font-size:11px;letter-spacing:.14em;margin-top:20px;font-family:var(--mono)}
+.lbl-prev{overflow:hidden;border-radius:12px;margin:12px 0;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.lbl-prev>.lbl{transform-origin:top left}
+.setup{max-width:520px;margin:6vh auto}
+.setup ol{padding-left:18px;color:var(--muted);font-size:13px;line-height:1.8}
+.skeleton{height:120px;border-radius:20px;background:linear-gradient(90deg,var(--panel),var(--panel2),var(--panel));background-size:200% 100%;animation:sk 1.2s infinite;margin-bottom:10px}
+@keyframes sk{to{background-position:-200% 0}}
+
+/* toast */
+#toasts{position:fixed;top:calc(64px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:80;display:flex;flex-direction:column;gap:8px;align-items:center;width:min(92vw,420px);pointer-events:none}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:14px;background:rgba(30,38,52,.96);border:1px solid var(--line2);box-shadow:0 14px 40px rgba(0,0,0,.5);font-size:13.5px;animation:pop2 .25s;transition:opacity .3s,transform .3s;max-width:100%}
+.toast span{flex:1}
+.toast.ok{border-color:rgba(94,240,196,.4)} .toast.err{border-color:rgba(255,107,125,.5);color:#ffd7dc}
+.toast button{border:0;background:var(--accent);color:var(--accent-ink);font:700 12px var(--font);padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.toast.out{opacity:0;transform:translateY(-8px)}
+@keyframes pop2{from{opacity:0;transform:translateY(-10px)}}
+
+/* ===== labels (screen preview + print) ===== */
+.lbl{background:#fff;color:#000;display:flex;align-items:center;overflow:hidden;font-family:'Zen Kaku Gothic New',sans-serif;box-sizing:border-box;border:.25mm dashed #c8c8c8}
+.lbl.L8{width:105mm;height:74.25mm;padding:6mm;gap:4mm}
+.lbl.L8 .lq{flex:0 0 50mm;width:50mm;height:50mm}
+.lbl.L2{width:210mm;height:148.5mm;padding:12mm;gap:9mm}
+.lbl.L2 .lq{flex:0 0 112mm;width:112mm;height:112mm}
+.lbl .lq svg{width:100%;height:100%;display:block}
+.lbl .li{flex:1;min-width:0;display:flex;flex-direction:column;gap:1.2mm}
+.l-sec{font-size:7.5pt;letter-spacing:.06em;color:#444;font-weight:700}
+.l-name{font-size:13pt;font-weight:900;line-height:1.2;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
+.l-code{font-size:9pt;font-family:'Space Grotesk',monospace}
+.l-pal{font-size:15pt;font-weight:700;font-family:'Space Grotesk',monospace;margin-top:1mm;border-top:.4mm solid #000;padding-top:1.5mm}
+.l-meta{font-size:9pt}
+.l-frac{border:.35mm solid #000;padding:0 1mm;border-radius:1mm;font-weight:900}
+.l-loc{font-size:26pt;font-weight:700;font-family:'Space Grotesk',monospace;line-height:1.05;word-break:break-all}
+.L2 .l-sec{font-size:13pt}.L2 .l-name{font-size:26pt}.L2 .l-code{font-size:16pt}.L2 .l-pal{font-size:30pt}.L2 .l-meta{font-size:16pt}.L2 .l-loc{font-size:54pt}
+#printArea{display:none}
+@media print{
+  @page{size:A4 portrait;margin:0}
+  html,body{background:#fff!important}
+  body>*:not(#printArea){display:none!important}
+  #printArea{display:block}
+  .ppage{width:210mm;height:297mm;display:grid;break-after:page;page-break-after:always;overflow:hidden}
+  .ppage:last-child{break-after:auto;page-break-after:auto}
+  .ppage.L8{grid-template-columns:105mm 105mm;grid-template-rows:repeat(4,74.25mm)}
+  .ppage.L2{grid-template-columns:210mm;grid-template-rows:repeat(2,148.5mm)}
+  .lbl{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<header class="top">
+  <div class="brand">
+    <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></div>
+    <div><div class="b1">STOCKYARD</div><div class="b2">資材ロケーション管理</div></div>
+  </div>
+  <div class="top-r"><span id="sync" class="sync" title="同期状態"></span><button id="lockBtn" class="lockbtn" data-act="lockAll"></button></div>
+</header>
+<main id="view"></main>
+<nav class="nav" id="nav"></nav>
+<div id="sheet" class="layer"><div class="backdrop" data-act="closeSheet"></div><div class="panel"><div class="grab"></div><button class="x-btn" data-act="closeSheet" aria-label="閉じる"></button><div class="sheet-body"></div></div></div>
+<div id="modal" class="layer"><div class="backdrop" data-act="modalCancel"></div><div class="mpanel modal-body"></div></div>
+<div id="pin" class="layer"><div class="backdrop" data-act="pinCancel"></div><div class="mpanel pin-body"></div></div>
+<div id="toasts"></div>
+<div id="printArea"></div>
+
+<script>
+/* =====================================================================
+   設定 : Firebase の接続情報をここに書いておくと、全端末で入力不要になります
+   (空のままでも、初回起動時の設定画面から端末ごとに貼り付けできます)
+   Firebase コンソール > プロジェクトの設定 > マイアプリ の firebaseConfig の値
+   ===================================================================== */
+const CONFIG = {
+  FIREBASE: {
+    apiKey: '',
+    authDomain: '',
+    projectId: '',
+    appId: ''
+  },
+  APP_URL: ''  // このHTMLの公開URL (QRをスマホ標準カメラで読んでも開けるようになる)
+};
+const VERSION='2.0 (Firebase)';
+const ADMIN_EMAIL='admin@stockyard.app';
+const CANCEL='キャンセルしました';
+
+/* ---------- utils ---------- */
+const $=(s,el=document)=>el.querySelector(s);
+const $$=(s,el=document)=>[...el.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>(n==null||n==='')?'-':Number(n).toLocaleString('ja-JP',{maximumFractionDigits:3});
+const sum=a=>a.reduce((x,y)=>x+(+y||0),0);
+const groupBy=(arr,key)=>{const m=new Map();for(const x of arr){const k=typeof key==='function'?key(x):x[key];const kk=k??null;if(!m.has(kk))m.set(kk,[]);m.get(kk).push(x);}return m;};
+const cmp=(a,b)=>String(a??'').localeCompare(String(b??''),'ja',{numeric:true});
+const toDate=v=>!v?null:(v.toDate?v.toDate():new Date(v));
+const dt=v=>{const d=toDate(v);return d?d.toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'-';};
+const store=(st)=>({get(k,d){try{const v=st.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{st.setItem(k,JSON.stringify(v))}catch(e){}}});
+const LS=store(window.localStorage), SS=store(window.sessionStorage);
+const b64e=s=>btoa(unescape(encodeURIComponent(s)));
+const b64d=s=>decodeURIComponent(escape(atob(s)));
+const chunk=(a,n)=>{const o=[];for(let i=0;i<a.length;i+=n)o.push(a.slice(i,i+n));return o;};
+
+function parseFbConfig(t){t=String(t||'');const o={};
+  const re=/["']?(apiKey|authDomain|projectId|storageBucket|messagingSenderId|appId|measurementId)["']?\s*:\s*["']([^"']+)["']/g;let m;
+  while((m=re.exec(t)))o[m[1]]=m[2].trim();return o;}
+function cfg(){const s=LS.get('sy_fbcfg',{})||{};const c=CONFIG.FIREBASE||{};
+  const fbc=(s.fb&&s.fb.apiKey)?s.fb:c;
+  return{fb:{apiKey:(fbc.apiKey||'').trim(),authDomain:(fbc.authDomain||'').trim(),projectId:(fbc.projectId||'').trim(),appId:(fbc.appId||'').trim()},app:s.app||CONFIG.APP_URL||''};}
+
+/* ---------- icons ---------- */
+const I={
+ box:'<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/>',
+ pin:'<path d="M12 21s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/>',
+ scan:'<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16"/>',
+ print:'<path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><path d="M7 14h10v7H7z"/>',
+ gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>',
+ lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+ unlock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-1.7"/>',
+ plus:'<path d="M12 5v14M5 12h14"/>',
+ search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+ x:'<path d="M18 6 6 18M6 6l12 12"/>',
+ arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+ check:'<path d="m5 12 5 5L20 7"/>',
+ qr:'<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z"/><path d="M14 14h2v2h-2zM18 14h2M14 18h2M18 18h2v2"/>',
+ edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13 7 4 4"/>',
+ trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+ history:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>',
+ move:'<path d="M3 12h13M12 7l5 5-5 5"/><path d="M20 5v14"/>',
+ tray:'<path d="M3 13h5l2 3h4l2-3h5"/><path d="M5 5h14l2 8v6H3v-6z"/>',
+ chev:'<path d="m9 6 6 6-6 6"/>',
+ cam:'<path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/>',
+ layers:'<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
+ down:'<path d="M12 4v12M6 11l6 6 6-6M4 20h16"/>',
+};
+const ic=(n,s=20)=>`<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${I[n]||''}</svg>`;
+$('.x-btn').innerHTML=ic('x',18);
+
+/* ---------- state ---------- */
+let fbApp=null,auth=null,db=null,FV=null;
+const S={sections:[],materials:[],locations:[],pallets:[],role:null,actor:LS.get('sy_actor',''),
+  tab:'stock',f:{sec:'all',cat:'all',q:''},lq:'',tray:SS.get('sy_tray',[])||[],dest:null,scanMode:'lookup',
+  printQ:LS.get('sy_printq',[])||[],layout:LS.get('sy_layout','8'),sel:new Set(),sheetRefresh:null,modalResolve:null,pinResolve:null,ready:false};
+const M={sec:new Map(),mat:new Map(),loc:new Map(),pal:new Map(),locByCode:new Map()};
+const view=$('#view');
+const saveTray=()=>SS.set('sy_tray',S.tray);
+const savePrint=()=>LS.set('sy_printq',S.printQ);
+const actor=()=>S.actor||null;
+const secOf=m=>M.sec.get(m?.section_id);
+const isFrac=p=>{const m=M.mat.get(p.material_id);return !!(m&&+m.std_qty>0&&+p.qty<+m.std_qty);};
+const locCode=id=>M.loc.get(id)?.code||'未設定';
+const locName=id=>{const l=M.loc.get(id);return l?l.code+(l.name?' '+l.name:''):'未設定';};
+const lockState=m=>{const s=secOf(m);return{edit:!!(m?.locked||s?.lock_edit),move:!!(m?.locked||s?.lock_move)};};
+const palByCode=c=>M.pal.get(String(c||'').toUpperCase());
+
+/* ---------- auth & permission ---------- */
+const P=()=>firebase.auth.Auth.Persistence;
+async function loadRole(){const u=auth.currentUser;
+  if(!u||u.isAnonymous){S.role=null;}
+  else{try{const d=await db.collection('roles').doc(u.uid).get();S.role=d.exists?d.data():null;}catch(e){S.role=null;}}
+  updateLockBtn();}
+async function signInAs(email,pw){await auth.setPersistence(P().SESSION);await auth.signInWithEmailAndPassword(email,pw);await loadRole();}
+async function signInAnon(){await auth.setPersistence(P().LOCAL);await auth.signInAnonymously();}
+// サインアウトを挟まず匿名に切り替える（未ログインの瞬間を作らずリアルタイム同期を維持）
+async function lockAll(){S.role=null;updateLockBtn();await signInAnon();await loadRole();}
+const covers=sec=>!!(S.role&&(S.role.admin||(S.role.sections||[]).includes(sec)));
+function needs(sec,kind,locked){
+  if(kind==='admin')return !(S.role&&S.role.admin);
+  if(covers(sec))return false;
+  const s=M.sec.get(sec)||{};
+  return kind==='pin'||(kind==='edit'&&(s.lock_edit||locked))||(kind==='move'&&(s.lock_move||locked));}
+async function ensure(sec,kind,locked=false){
+  if(!needs(sec,kind,locked))return;
+  const ok=await askPin(kind==='admin'?'__admin__':sec);
+  if(!ok||needs(sec,kind,locked))throw new Error(CANCEL);}
+function roleLabel(){if(!S.role)return '';if(S.role.admin)return '管理者';
+  return (S.role.sections||[]).map(id=>M.sec.get(id)?.name||id).join('・')||'解除中';}
+function updateLockBtn(){const b=$('#lockBtn');if(!b)return;const on=!!S.role;b.className='lockbtn'+(on?' open':'');
+  b.innerHTML=on?`${ic('unlock',15)}${esc(roleLabel())}`:ic('lock',15);b.title=on?'ロック解除中 (タップでロック)':'ロック中';}
+
+/* ---------- data (realtime) ---------- */
+let busyN=0;function busy(on){busyN=Math.max(0,busyN+(on?1:-1));$('#bar').classList.toggle('on',busyN>0);}
+function derive(){
+  M.sec=new Map(S.sections.map(x=>[x.id,x]));
+  const secIdx=new Map(S.sections.map((s,i)=>[s.id,i]));
+  S.materials.sort((a,b)=>(secIdx.get(a.section_id)??99)-(secIdx.get(b.section_id)??99)||cmp(a.category,b.category)||cmp(a.code,b.code));
+  M.mat=new Map(S.materials.map(x=>[x.id,x]));
+  M.loc=new Map(S.locations.map(x=>[x.id,x]));M.locByCode=new Map(S.locations.map(x=>[String(x.code).toUpperCase(),x]));
+  S.pallets.forEach(p=>{if(p.location_id&&!M.loc.has(p.location_id))p.location_id=null;});
+  M.pal=new Map(S.pallets.map(x=>[x.id,x]));}
+let rfT=null;function schedRefresh(){clearTimeout(rfT);rfT=setTimeout(()=>{if(S.ready)refreshViews();},120);}
+function setSync(st){const e=$('#sync');if(e)e.className='sync '+st;}
+let unsubs=[],relT=null;
+function relisten(){clearTimeout(relT);relT=setTimeout(()=>{listen().catch(()=>relisten());},3000);}
+function listen(){
+  unsubs.forEach(u=>{try{u();}catch(e){}});unsubs=[];
+  return new Promise((resolve,reject)=>{
+    const need=new Set(['sections','locations','materials','pallets']);let failed=false;
+    const on=(name,q,map)=>unsubs.push(q.onSnapshot(s=>{
+        S[name]=s.docs.map(d=>({id:d.id,...d.data()})).filter(map||(()=>true));derive();
+        setSync(s.metadata.fromCache?'ng':'ok');
+        if(need.delete(name)&&!need.size)resolve();else schedRefresh();},
+      err=>{setSync('ng');if(need.size&&!S.ready){if(!failed){failed=true;reject(err);}}else if(!failed){failed=true;relisten();}}));
+    on('sections',db.collection('sections'));
+    on('locations',db.collection('locations'),l=>l.active!==false);
+    on('materials',db.collection('materials'));
+    on('pallets',db.collection('pallets').where('status','==','active'));
+  });}
+function errMsg(e){const c=e?.code||'';const m=e?.message||String(e);
+  if(m===CANCEL)return m;
+  if(c==='permission-denied')return '権限がありません（ロック中、またはセキュリティルール未設定）';
+  if(c==='unavailable')return 'サーバーに接続できません。電波・ネットワークを確認してください';
+  if(c==='auth/network-request-failed')return '通信できません。ネットワークを確認してください';
+  if(c==='auth/operation-not-allowed'||c==='auth/admin-restricted-operation')return 'Firebaseで「匿名」または「メール/パスワード」ログインが有効になっていません';
+  if(c==='auth/configuration-not-found')return 'FirebaseのAuthentication（ログイン機能）が開始されていません';
+  if(/api-key-not-valid|invalid-api-key/.test(c))return 'apiKey が正しくありません';
+  if(c==='auth/too-many-requests')return '試行回数が多すぎます。しばらく待ってからやり直してください';
+  if(c==='auth/weak-password')return 'PIN・パスワードは6桁以上にしてください';
+  if(c==='auth/operation-not-supported-in-this-environment')return 'この開き方ではログインできません。公開URL（https）から開いてください';
+  if(c==='failed-precondition')return 'データベースの準備が完了していません（Firestoreが作成されているか確認）';
+  if(c==='not-found')return 'データベースが見つかりません。Firestore Database を作成してください';
+  return m;}
+async function run(fn){try{busy(true);return await fn();}catch(e){if(e?.message!==CANCEL)toast(errMsg(e),'err');}finally{busy(false);}}
+const TS=()=>firebase.firestore.FieldValue.serverTimestamp();
+const mvRef=()=>db.collection('movements').doc();
+function logMove(b,pid,o){b.set(mvRef(),{pallet_id:pid,action:o.action,from_location:o.from??null,to_location:o.to??null,qty_before:o.qb??null,qty_after:o.qa??null,actor:actor(),section_id:o.sec||null,at:TS()});}
+
+/* ---------- write operations ---------- */
+function cleanMat(p,o){return{section_id:p.section_id,code:String(p.code||'').trim(),name:String(p.name||'').trim(),
+  category:String(p.category||'').trim()||null,unit:String(p.unit||'').trim()||'個',
+  std_qty:(p.std_qty===''||p.std_qty==null||isNaN(+p.std_qty))?null:+p.std_qty,
+  note:String(p.note||'').trim()||null,locked:!!p.locked,active:true,created_at:o?.created_at||TS()};}
+async function upsertMaterial(p){
+  const d=cleanMat(p,p.id?M.mat.get(p.id):null);
+  if(!d.code||!d.name)throw new Error('資材コードと資材名は必須です');
+  if(S.materials.some(m=>m.id!==p.id&&String(m.code).toUpperCase()===d.code.toUpperCase()))throw new Error('資材コード「'+d.code+'」は既に登録されています');
+  if(p.id){const o=M.mat.get(p.id);if(!o)throw new Error('資材が見つかりません');
+    d.section_id=o.section_id;
+    await ensure(o.section_id,'edit',!!o.locked);
+    if(!!o.locked!==d.locked)await ensure(o.section_id,'pin');
+    await db.collection('materials').doc(p.id).set(d);
+  }else{
+    await ensure(d.section_id,d.locked?'pin':'edit');
+    await db.collection('materials').add(d);}
+}
+async function deleteMaterial(id){const m=M.mat.get(id);if(!m)return;
+  await ensure(m.section_id,'edit',!!m.locked);
+  if(S.pallets.some(p=>p.material_id===id))throw new Error('在庫パレットがあるため削除できません');
+  const used=await db.collection('pallets').where('material_id','==',id).get();
+  for(const d of used.docs)await d.ref.delete();
+  await db.collection('materials').doc(id).delete();}
+async function allocCodes(n){
+  const ref=db.collection('meta').doc('counter');
+  const start=await db.runTransaction(async tx=>{const s=await tx.get(ref);const cur=s.exists?(s.data().pallet||0):0;
+    if(s.exists)tx.update(ref,{pallet:cur+n});else tx.set(ref,{pallet:n});return cur+1;});
+  return Array.from({length:n},(_,i)=>'P-'+String(start+i).padStart(6,'0'));}
+async function createPallets(mid,count,qty,loc,lot){const m=M.mat.get(mid);if(!m)throw new Error('資材が見つかりません');
+  count=Math.floor(+count);if(!(count>=1&&count<=100))throw new Error('登録数は1〜100で指定してください');
+  if(!(+qty>=0))throw new Error('数量は0以上で入力してください');
+  await ensure(m.section_id,'edit',!!m.locked);
+  const codes=await allocCodes(count);const out=[];
+  for(const part of chunk(codes,10)){
+    await Promise.all(part.map(async code=>{const b=db.batch();
+      b.set(db.collection('pallets').doc(code),{code,material_id:mid,section_id:m.section_id,qty:+qty,lot:String(lot||'').trim()||null,
+        location_id:loc||null,status:'active',note:null,created_at:TS(),updated_at:TS(),updated_by:actor()});
+      logMove(b,code,{action:'create',to:loc||null,qa:+qty,sec:m.section_id});
+      await b.commit();out.push(code);}));}
+  return out.sort();}
+async function updatePallet(id,qty,lot,note){const p=M.pal.get(id);if(!p)throw new Error('パレットが見つかりません');const m=M.mat.get(p.material_id)||{};
+  if(!(+qty>=0))throw new Error('数量は0以上で入力してください');
+  await ensure(p.section_id,'edit',!!m.locked);
+  const b=db.batch();
+  b.update(db.collection('pallets').doc(id),{qty:+qty,lot:String(lot||'').trim()||null,note:String(note||'').trim()||null,updated_at:TS(),updated_by:actor()});
+  if(+qty!==+p.qty)logMove(b,id,{action:'qty',from:p.location_id,qb:p.qty,qa:+qty,sec:p.section_id});
+  await b.commit();}
+function groupForAuth(pals,kind){return [...groupBy(pals,p=>p.section_id+'|'+(M.mat.get(p.material_id)?.locked?1:0))].map(([k,ps])=>({sec:k.split('|')[0],locked:k.endsWith('|1'),ps,kind}));}
+async function perPallet(pals,kind,fn){let n=0;
+  for(const g of groupForAuth(pals,kind)){await ensure(g.sec,kind,g.locked);
+    for(const part of chunk(g.ps,10)){await Promise.all(part.map(async p=>{await fn(p);n++;}));}}
+  return n;}
+async function movePalletsTo(ids,to){
+  if(to&&!M.loc.has(to))throw new Error('移動先が見つかりません');
+  const pals=ids.map(id=>M.pal.get(id)).filter(p=>p&&p.location_id!==to);
+  return perPallet(pals,'move',async p=>{const b=db.batch();
+    b.update(db.collection('pallets').doc(p.id),{location_id:to||null,updated_at:TS(),updated_by:actor()});
+    logMove(b,p.id,{action:'move',from:p.location_id,to:to||null,qa:p.qty,sec:p.section_id});await b.commit();});}
+async function setStatus(ids,status,palsIn){
+  const pals=palsIn||ids.map(id=>M.pal.get(id)).filter(Boolean);
+  return perPallet(pals.filter(p=>p.status!==status),'edit',async p=>{const b=db.batch();
+    b.update(db.collection('pallets').doc(p.id),{status,updated_at:TS(),updated_by:actor()});
+    logMove(b,p.id,{action:status==='used'?'used':'restore',from:p.location_id,qb:p.qty,qa:p.qty,sec:p.section_id});await b.commit();});}
+async function deletePallet(p){await perPallet([p],'edit',async x=>{await db.collection('pallets').doc(x.id).delete();});}
+async function newSectionAccount(id,pin){
+  const sec2=firebase.apps.find(a=>a.name==='secmaker')||firebase.initializeApp(fbApp.options,'secmaker');
+  const a2=sec2.auth();await a2.setPersistence(P().NONE);
+  const email=`sec-${id}-${Date.now().toString(36)}@stockyard.app`;
+  const cr=await a2.createUserWithEmailAndPassword(email,pin);const uid=cr.user.uid;await a2.signOut();
+  return{email,uid};}
+async function upsertSection(p,pin){
+  await ensure(null,'admin');
+  const id=String(p.id||'').trim();
+  if(!/^[a-z0-9_-]+$/.test(id))throw new Error('セクションIDは半角英小文字・数字・_ - のみ使用できます');
+  if(!String(p.name||'').trim())throw new Error('セクション名は必須です');
+  const old=M.sec.get(id);
+  if(!old&&!pin)throw new Error('新しいセクションにはPINが必要です');
+  if(pin&&String(pin).length<6)throw new Error('PINは6桁以上にしてください');
+  const d={name:String(p.name).trim(),color:p.color||'#5ef0c4',lock_edit:!!p.lock_edit,lock_move:!!p.lock_move,sort:+p.sort||0,
+    acct:old?.acct||null,acct_uid:old?.acct_uid||null};
+  const b=db.batch();
+  if(pin){const a=await newSectionAccount(id,String(pin));
+    if(old?.acct_uid)b.delete(db.collection('roles').doc(old.acct_uid));
+    b.set(db.collection('roles').doc(a.uid),{admin:false,sections:[id],label:d.name});
+    d.acct=a.email;d.acct_uid=a.uid;}
+  else if(old?.acct_uid&&old.name!==d.name)b.set(db.collection('roles').doc(old.acct_uid),{label:d.name},{merge:true});
+  b.set(db.collection('sections').doc(id),d);
+  await b.commit();}
+async function deleteSection(id){await ensure(null,'admin');
+  if(S.materials.some(m=>m.section_id===id))throw new Error('このセクションに資材が登録されているため削除できません');
+  const s=M.sec.get(id);const b=db.batch();if(s?.acct_uid)b.delete(db.collection('roles').doc(s.acct_uid));
+  b.delete(db.collection('sections').doc(id));await b.commit();}
+async function upsertLocation(p){await ensure(null,'admin');
+  const code=String(p.code||'').trim().toUpperCase();if(!code)throw new Error('場所コードは必須です');
+  const dup=S.locations.find(l=>l.id!==p.id&&String(l.code).toUpperCase()===code);
+  const id=p.id||dup?.id||null;
+  if(p.id&&dup)throw new Error('場所コード「'+code+'」は既に登録されています');
+  const d={code,name:String(p.name||'').trim()||null,area:String(p.area||'').trim()||null,sort:+p.sort||0,active:true};
+  if(id)await db.collection('locations').doc(id).set(d);else await db.collection('locations').add(d);}
+async function deleteLocation(id){await ensure(null,'admin');await db.collection('locations').doc(id).delete();}
+async function changeAdminPassword(pw){await ensure(null,'admin');
+  if(String(pw).length<6)throw new Error('パスワードは6桁以上にしてください');
+  await auth.currentUser.updatePassword(String(pw));}
+
+/* ---------- ui primitives ---------- */
+function toast(msg,type='',action=null){const t=document.createElement('div');t.className='toast '+type;t.innerHTML=`<span>${esc(msg)}</span>`;
+  if(action){const b=document.createElement('button');b.textContent=action.label;b.onclick=()=>{t.remove();action.fn();};t.appendChild(b);}
+  $('#toasts').prepend(t);const life=action?4500:(type==='err'?4200:2600);setTimeout(()=>t.classList.add('out'),life);setTimeout(()=>t.remove(),life+350);}
+function openSheet(html,refresh=null){S.sheetRefresh=refresh;$('#sheet .sheet-body').innerHTML=html;const el=$('#sheet');if(!el.classList.contains('open')){el.classList.add('open');$('#sheet .panel').scrollTop=0;}document.body.classList.add('noscroll');}
+function closeSheet(){$('#sheet').classList.remove('open');S.sheetRefresh=null;S.sel.clear();document.body.classList.remove('noscroll');}
+function refreshSheet(){if(!S.sheetRefresh||!$('#sheet').classList.contains('open'))return;const p=$('#sheet .panel');const st=p.scrollTop;Promise.resolve(S.sheetRefresh()).then(()=>{p.scrollTop=st;});}
+function modal(html){return new Promise(res=>{if(S.modalResolve)S.modalResolve(null);S.modalResolve=res;$('#modal .modal-body').innerHTML=html;$('#modal').classList.add('open');setTimeout(()=>{const f=$('#modal [autofocus]');f&&f.focus();},60);});}
+function closeModal(v=null){$('#modal').classList.remove('open');const r=S.modalResolve;S.modalResolve=null;r&&r(v);}
+function formModal(html,handler){const p=modal(`<form id="mf" autocomplete="off">${html}<div class="ferr" id="mfErr"></div></form>`);const f=$('#mf');
+  f.onsubmit=async e=>{e.preventDefault();$('#mfErr').textContent='';f.classList.add('busy');busy(true);
+    try{const r=await handler(f);if(r!==undefined)closeModal(r);}catch(err){if(err?.message!==CANCEL)$('#mfErr').textContent=errMsg(err);}
+    finally{f.classList.remove('busy');busy(false);}};return p;}
+const fv=(f,n)=>f.elements.namedItem(n);
+function confirmDlg(msg,ok='OK',danger=false){return modal(`<div class="mt" style="font-size:16px;line-height:1.5">${esc(msg)}</div><div class="row end" style="margin-top:18px"><button class="btn ghost" data-act="modalCancel">キャンセル</button><button class="btn ${danger?'danger':'primary'}" data-act="modalOk">${esc(ok)}</button></div>`).then(v=>!!v);}
+function askPin(scope){
+  const isAdm=scope==='__admin__';const sec=isAdm?null:M.sec.get(scope);
+  const label=isAdm?'管理者':(sec?.name||scope);
+  return new Promise(res=>{
+    if(S.pinResolve)S.pinResolve(false);S.pinResolve=res;
+    $('#pin .pin-body').innerHTML=`<div class="mh"><div class="mh-ic">${ic('lock',22)}</div><div><div class="mt">${esc(label)} の${isAdm?'パスワード':'PIN'}</div><div class="ms" style="margin:0">この操作はロックされています。${isAdm?'':'管理者パスワードでも解除できます。'}</div></div></div>
+    <form id="pinForm" autocomplete="off"><input id="pinIn" class="pin-input mono" type="password" ${isAdm?'':'inputmode="numeric"'} placeholder="••••••"><div class="err" id="pinErr"></div>
+    <div class="row end"><button type="button" class="btn ghost" data-act="pinCancel">キャンセル</button><button class="btn primary" type="submit">${ic('unlock',18)}解除</button></div></form>`;
+    $('#pin').classList.add('open');setTimeout(()=>$('#pinIn')?.focus(),60);
+    $('#pinForm').onsubmit=async e=>{e.preventDefault();const v=$('#pinIn').value.trim();if(!v)return;const f=$('#pinForm');f.classList.add('busy');
+      const bad=c=>/wrong-password|invalid-credential|invalid-login|user-not-found|invalid-email|missing-password/.test(c||'');
+      try{
+        if(!isAdm&&sec?.acct){try{await signInAs(sec.acct,v);closePin(true);return;}catch(err){if(!bad(err.code))throw err;}}
+        try{await signInAs(ADMIN_EMAIL,v);closePin(true);return;}catch(err){if(!bad(err.code))throw err;}
+        $('#pinErr').textContent=(!isAdm&&!sec?.acct)?'このセクションのPINが未設定です（管理者パスワードで解除できます）':'PINが違います';
+        $('#pinIn').value='';f.classList.remove('shake');void f.offsetWidth;f.classList.add('shake');
+      }catch(err){$('#pinErr').textContent=errMsg(err);}
+      finally{f.classList.remove('busy');}};
+  });}
+function closePin(v){$('#pin').classList.remove('open');const r=S.pinResolve;S.pinResolve=null;updateLockBtn();if(v&&S.ready)refreshViews();r&&r(v);}
+function groupLocs(list){const g=new Map();for(const l of list){const a=l.area||'その他';if(!g.has(a))g.set(a,[]);g.get(a).push(l);}return g;}
+const sortedLocs=()=>[...S.locations].sort((a,b)=>(+a.sort||0)-(+b.sort||0)||cmp(a.code,b.code));
+function locSelect(name,sel){const g=groupLocs(sortedLocs());return `<select name="${name}"><option value="">未設定</option>${[...g].map(([a,ls])=>`<optgroup label="${esc(a)}">${ls.map(l=>`<option value="${l.id}" ${l.id===sel?'selected':''}>${esc(l.code)}${l.name?' '+esc(l.name):''}</option>`).join('')}</optgroup>`).join('')}</select>`;}
+function pickLocation(title='移動先を選択',current=null){
+  const p=modal(`<div class="mt">${esc(title)}</div><div class="search sm" style="margin-top:12px">${ic('search',16)}<input id="lpQ" placeholder="場所コード・名称で絞り込み" autocomplete="off"></div><div id="lpList" class="lp-list"></div><div class="row end"><button type="button" class="btn ghost" data-act="modalCancel">キャンセル</button></div>`);
+  const draw=()=>{const q=($('#lpQ')?.value||'').trim().toLowerCase();const ls=sortedLocs().filter(l=>!q||(l.code+' '+(l.name||'')+' '+(l.area||'')).toLowerCase().includes(q));
+    const cnt=groupBy(S.pallets,'location_id');
+    $('#lpList').innerHTML=ls.length?[...groupLocs(ls)].map(([a,arr])=>`<div class="lp-area">${esc(a)}</div><div class="lp-grid">${arr.map(l=>`<button type="button" class="lp-item ${l.id===current?'cur':''}" data-act="pickLoc" data-id="${l.id}"><b>${esc(l.code)}</b><small>${esc(l.name||'')} ${(cnt.get(l.id)||[]).length}PL</small></button>`).join('')}</div>`).join(''):'<div class="empty sm">該当する場所がありません</div>';};
+  draw();$('#lpQ').oninput=draw;return p;}
+
+/* ---------- QR ---------- */
+function appBase(){const c=cfg().app;if(c)return c.split('#')[0];if(/^https?:$/.test(location.protocol))return location.href.split('#')[0];return '';}
+function qrText(t,code){const b=appBase();return b?`${b}#${t}=${encodeURIComponent(code)}`:`${t}=${encodeURIComponent(code)}`;}
+function qrSvg(text){if(!window.qrcode)return '<div style="color:#000;font-size:10px">QR</div>';const q=qrcode(0,'M');q.addData(text);q.make();return q.createSvgTag({cellSize:4,margin:8,scalable:true});}
+function parseQR(raw){const t=String(raw||'').trim();if(!t)return null;
+  let m=t.match(/[#?&]([pl])=([^&#\s]+)/i)||t.match(/^([pl])[=:]([^\s]+)$/i);
+  if(m){let code;try{code=decodeURIComponent(m[2]);}catch(e){code=m[2];}return{type:m[1].toLowerCase(),code:code.toUpperCase()};}
+  const u=t.toUpperCase();
+  if(M.pal.has(u)||/^P-\d+$/.test(u))return{type:'p',code:u};
+  if(M.locByCode.has(u))return{type:'l',code:u};
+  return null;}
+
+/* ---------- nav & routing ---------- */
+const TABS=[['stock','在庫','layers'],['locs','場所','pin'],['scan','スキャン','scan'],['print','印刷','print'],['admin','管理','gear']];
+function renderNav(){$('#nav').style.display='';$('#nav').innerHTML=TABS.map(([id,l,i])=>`<button class="${id==='scan'?'scanbtn ':''}${S.tab===id?'on':''}" data-act="go" data-tab="${id}">${ic(i,id==='scan'?26:21)}<span>${l}</span></button>`).join('');}
+function go(tab){if(S.tab==='scan'&&tab!=='scan')Scan.stop();S.tab=tab;render();window.scrollTo(0,0);}
+function render(){renderNav();updateLockBtn();({stock:renderStock,locs:renderLocs,scan:renderScan,print:renderPrint,admin:renderAdmin})[S.tab]();}
+function refreshViews(){updateLockBtn();if(S.tab==='scan')renderTray();else if(S.tab==='stock')renderStockList();else if(S.tab==='locs')renderLocList();else if(S.tab==='print'){if(!$('#modal').classList.contains('open'))renderPrint();}else if(S.tab==='admin')renderAdminLists();refreshSheet();}
+
+/* ---------- STOCK ---------- */
+const chip=(act,v,label,on,color)=>`<button class="chip ${on?'on':''}" data-act="${act}" data-v="${esc(v)}">${color?`<span class="dot" style="--c:${esc(color)}"></span>`:''}${esc(label)}</button>`;
+function renderStock(){
+  const cats=[...new Set(S.materials.map(m=>m.category).filter(Boolean))].sort(cmp);
+  view.innerHTML=`<div class="search">${ic('search',18)}<input id="q" placeholder="資材名・コード・パレットNo.・LOT" value="${esc(S.f.q)}" autocomplete="off" enterkeyhint="search"></div>
+   <div class="chips scroll">${chip('secFilter','all','すべて',S.f.sec==='all')}${S.sections.map(s=>chip('secFilter',s.id,s.name,S.f.sec===s.id,s.color)).join('')}</div>
+   ${cats.length?`<div class="chips scroll sub">${chip('catFilter','all','全分類',S.f.cat==='all')}${cats.map(c=>chip('catFilter',c,c,S.f.cat===c)).join('')}</div>`:''}
+   <div id="stockList"></div>
+   <button class="fab" data-act="addMat">${ic('plus',20)}<span>資材</span></button>`;
+  $('#q').oninput=e=>{S.f.q=e.target.value;renderStockList();};
+  renderStockList();}
+function renderStockList(){
+  const el=$('#stockList');if(!el)return;
+  const q=S.f.q.trim().toLowerCase();
+  const base=S.materials.filter(m=>m.active!==false&&(S.f.sec==='all'||m.section_id===S.f.sec)&&(S.f.cat==='all'||m.category===S.f.cat));
+  const pb=groupBy(S.pallets,'material_id');
+  let mats=base,palHits=[];
+  if(q){const ids=new Set(base.map(m=>m.id));
+    mats=base.filter(m=>(m.name+' '+m.code+' '+(m.category||'')).toLowerCase().includes(q));
+    if(q.length>=2)palHits=S.pallets.filter(p=>ids.has(p.material_id)&&(p.code.toLowerCase().includes(q)||(p.lot||'').toLowerCase().includes(q))).sort((a,b)=>cmp(a.code,b.code)).slice(0,40);}
+  const allP=mats.flatMap(m=>pb.get(m.id)||[]);
+  const fr=allP.filter(isFrac).length;
+  const kp=`<div class="kpis"><div class="kpi"><div class="eyebrow">資材</div><div class="v">${mats.length}</div></div><div class="kpi"><div class="eyebrow">パレット</div><div class="v">${allP.length}</div></div><div class="kpi ${fr?'w':''}"><div class="eyebrow">端数</div><div class="v">${fr}</div></div><div class="kpi"><div class="eyebrow">使用場所</div><div class="v">${new Set(allP.map(p=>p.location_id).filter(Boolean)).size}</div></div></div>`;
+  const hits=palHits.length?`<div class="sect-h">${ic('box',15)}パレット ${palHits.length}件</div>${palHits.map(p=>palRow(p)).join('')}`:'';
+  const cards=mats.length?`${palHits.length?`<div class="sect-h">${ic('layers',15)}資材</div>`:''}<div class="grid">${mats.map(m=>matCard(m,pb.get(m.id)||[])).join('')}</div>`
+    :(palHits.length?'':`<div class="empty">${S.materials.length?'該当する資材がありません':'資材が未登録です。右下の「＋資材」から登録してください'}</div>`);
+  el.innerHTML=kp+hits+cards;}
+function matCard(m,pals){const s=secOf(m);const tot=sum(pals.map(p=>p.qty));const fr=pals.filter(isFrac).length;const lk=lockState(m);
+  const locs=[...groupBy(pals,'location_id')].sort((a,b)=>b[1].length-a[1].length);
+  const bar=!pals.length?'<span class="muted">在庫なし</span>':(+m.std_qty>0?`<span><b class="mono">${pals.length-fr}</b> 満</span>${fr?`<span class="fr"><b class="mono">${fr}</b> 端数</span>`:''}<span class="muted">計 ${pals.length} PL</span>`:`<span><b class="mono">${pals.length}</b> PL</span>`);
+  return `<div class="mcard ${pals.length?'':'zero'}" data-act="openMat" data-id="${m.id}" style="--c:${esc(s?.color||'#5ef0c4')}">
+   <div class="mc-top"><span class="tag"><i class="dot"></i>${esc(s?.name||'')}${m.category?' ・ '+esc(m.category):''}</span>${lk.edit||lk.move?`<span class="lk" title="ロック">${ic('lock',14)}</span>`:''}</div>
+   <div class="mc-name">${esc(m.name)}</div><div class="mc-code mono">${esc(m.code)}</div>
+   <div class="mc-qty"><span class="mono">${fmt(tot)}</span><small>${esc(m.unit||'')}</small></div>
+   <div class="mc-bar">${bar}</div>
+   ${locs.length?`<div class="mc-locs">${locs.slice(0,3).map(([lid,ps])=>`<span>${ic('pin',11)}${esc(locCode(lid))}<b>×${ps.length}</b></span>`).join('')}${locs.length>3?`<span>+${locs.length-3}</span>`:''}</div>`:''}
+  </div>`;}
+function palRow(p,o={}){const m=M.mat.get(p.material_id)||{};const fr=isFrac(p);
+  return `<div class="prow ${o.select&&S.sel.has(p.id)?'sel':''}">
+   ${o.select?`<button class="ck" data-act="selToggle" data-id="${p.id}" aria-label="選択">${ic('check',14)}</button>`:''}
+   <div class="pr-main" data-act="openPal" data-id="${p.id}">
+    ${o.showMat!==false?`<div class="pr-name">${esc(m.name||'?')}</div>`:''}
+    <div class="pr-sub"><span class="mono">${esc(p.code)}</span>${o.showLoc!==false?`<span>${ic('pin',12)}${esc(locName(p.location_id))}</span>`:''}${p.lot?`<span>LOT ${esc(p.lot)}</span>`:''}</div>
+   </div>
+   <div class="pr-qty"><span class="mono">${fmt(p.qty)}</span>${fr?'<span class="badge frac">端数</span>':`<small>${esc(m.unit||'')}</small>`}</div>
+   ${o.remove?`<button class="icon-btn" data-act="trayRemove" data-id="${p.id}" aria-label="外す">${ic('x',16)}</button>`:''}
+  </div>`;}
+function selBar(){return `<div class="selbar ${S.sel.size?'show':''}"><span class="mono">${S.sel.size}</span><span>選択中</span><div class="sp"></div>
+  <button class="btn sm primary" data-act="selMove">${ic('move',16)}移動</button><button class="btn sm" data-act="selTray">${ic('tray',16)}トレイ</button><button class="btn sm" data-act="selPrint">${ic('print',16)}ラベル</button><button class="btn sm ghost" data-act="selUse">使用済</button></div>`;}
+function lockPills(m){const lk=lockState(m);return `${lk.edit?`<span class="pill on">${ic('lock',11)}編集</span>`:''}${lk.move?`<span class="pill on">${ic('lock',11)}移動</span>`:''}`;}
+function openMaterial(id){const m=M.mat.get(id);if(!m){closeSheet();return;}const s=secOf(m);
+  const pals=S.pallets.filter(p=>p.material_id===id).sort((a,b)=>cmp(locCode(a.location_id),locCode(b.location_id))||cmp(a.code,b.code));
+  [...S.sel].forEach(x=>{if(!M.pal.has(x))S.sel.delete(x);});
+  const tot=sum(pals.map(p=>p.qty)),fr=pals.filter(isFrac).length;
+  const groups=[...groupBy(pals,'location_id')];
+  openSheet(`<div class="sh-head"><div class="eyebrow"><span class="dot" style="--c:${esc(s?.color)}"></span>${esc(s?.name||'')} ・ ${esc(m.category||'未分類')} ${lockPills(m)}</div><h2>${esc(m.name)}</h2><div class="mono muted">${esc(m.code)}</div></div>
+   <div class="stats3"><div><div class="eyebrow">在庫数</div><div class="big mono">${fmt(tot)}<small>${esc(m.unit)}</small></div></div><div><div class="eyebrow">パレット</div><div class="big mono">${pals.length}</div></div><div><div class="eyebrow">端数</div><div class="big mono ${fr?'warn':''}">${fr}</div></div></div>
+   <div class="muted sm">1パレット標準数量: ${+m.std_qty>0?fmt(m.std_qty)+' '+esc(m.unit)+'（未満を端数表示）':'未設定（端数判定なし）'}${m.note?'<br>メモ: '+esc(m.note):''}</div>
+   <div class="row"><button class="btn primary" data-act="newPallets" data-id="${id}">${ic('plus',18)}パレット登録</button><button class="btn" data-act="editMat" data-id="${id}">${ic('edit',18)}編集</button></div>
+   ${groups.map(([lid,ps])=>`<div class="group"><div class="group-h"><span>${ic('pin',14)}${esc(locName(lid))}</span><span class="muted mono">${ps.length}PL ・ ${fmt(sum(ps.map(p=>p.qty)))}</span><div class="sp"></div><button class="link" data-act="selAll" data-ids="${ps.map(p=>p.id).join(',')}">全選択</button></div>${ps.map(p=>palRow(p,{select:true,showMat:false,showLoc:false})).join('')}</div>`).join('')||'<div class="empty sm" style="margin-top:16px">在庫パレットはありません</div>'}
+   ${selBar()}`,()=>openMaterial(id));}
+async function openPallet(code){
+  code=String(code||'').toUpperCase();
+  let p=M.pal.get(code);
+  if(!p){try{const d=await db.collection('pallets').doc(code).get();if(d.exists)p={id:d.id,...d.data()};}catch(e){}}
+  if(!p){toast('パレットが見つかりません: '+code,'err');return;}
+  const m=M.mat.get(p.material_id)||{};const s=secOf(m);const used=p.status!=='active';const fr=isFrac(p);
+  openSheet(`<div class="sh-head"><div class="eyebrow"><span class="dot" style="--c:${esc(s?.color)}"></span>${esc(s?.name||'')} ・ ${esc(m.category||'未分類')} ${lockPills(m)}</div><h2>${esc(m.name||'?')}</h2><div class="mono muted">資材コード ${esc(m.code||'')}</div></div>
+   <div class="pal-hero"><div class="qrbox">${qrSvg(qrText('p',p.code))}</div><div><div class="eyebrow">PALLET</div><div class="mono xl">${esc(p.code)}</div>${used?'<div style="margin-top:8px"><span class="badge">使用済み</span></div>':''}</div></div>
+   <div class="kv"><div class="k">数量</div><div class="v"><span class="big mono">${fmt(p.qty)}</span><span class="muted">${esc(m.unit||'')}</span>${fr?'<span class="badge frac">端数</span>':''}${+m.std_qty>0?`<span class="muted sm">/ 標準 ${fmt(m.std_qty)}</span>`:''}</div>
+    <div class="k">保管場所</div><div class="v loc">${ic('pin',17)}${esc(locName(p.location_id))}</div>
+    <div class="k">LOT</div><div class="v">${esc(p.lot||'-')}</div>
+    ${p.note?`<div class="k">メモ</div><div class="v">${esc(p.note)}</div>`:''}
+    <div class="k">更新</div><div class="v muted sm">${dt(p.updated_at)}${p.updated_by?' ・ '+esc(p.updated_by):''}</div></div>
+   ${used?`<div class="row"><button class="btn" data-act="palRestore" data-id="${p.id}">在庫に戻す</button></div>`:`<div class="actions-grid">
+     <button class="act-tile primary" data-act="palMove" data-id="${p.id}">${ic('move',22)}<span>場所を移動</span></button>
+     <button class="act-tile" data-act="palQty" data-id="${p.id}">${ic('edit',22)}<span>数量・LOT</span></button>
+     <button class="act-tile" data-act="palTray" data-id="${p.id}">${ic('tray',22)}<span>トレイへ</span></button>
+     <button class="act-tile" data-act="palPrint" data-id="${p.id}">${ic('print',22)}<span>ラベル</span></button></div>
+    <div class="row"><button class="btn sm ghost" data-act="openMat" data-id="${m.id}">${ic('layers',15)}この資材の一覧</button><div class="sp"></div><button class="btn sm ghost" data-act="palUse" data-id="${p.id}">使用済みにする</button><button class="btn sm ghost danger" data-act="palDel" data-id="${p.id}">${ic('trash',15)}</button></div>`}
+   <div class="group"><div class="group-h"><span>${ic('history',14)}履歴</span></div><div id="hist" class="hist"><div class="muted sm">読み込み中…</div></div></div>`,
+   used?null:()=>openPallet(p.id));
+  loadHistory(p.id);}
+const ACTION_L={create:'登録',move:'移動',qty:'数量',used:'使用',restore:'復帰'};
+async function loadHistory(pid){let rows=[];
+  try{const s=await db.collection('movements').where('pallet_id','==',pid).limit(200).get();rows=s.docs.map(d=>d.data());}catch(e){}
+  const el=$('#hist');if(!el)return;
+  rows.sort((a,b)=>(toDate(b.at)||0)-(toDate(a.at)||0));rows=rows.slice(0,30);
+  if(!rows.length){el.innerHTML='<div class="muted sm">履歴はありません</div>';return;}
+  el.innerHTML=rows.map(h=>{let d='';
+    if(h.action==='move')d=`${esc(locCode(h.from_location))} → <b>${esc(locCode(h.to_location))}</b>`;
+    else if(h.action==='qty')d=`${fmt(h.qty_before)} → <b>${fmt(h.qty_after)}</b>`;
+    else if(h.action==='create')d=`${fmt(h.qty_after)} @ ${esc(locCode(h.to_location))}`;
+    else d=`${fmt(h.qty_after)}`;
+    return `<div class="hrow"><span class="t">${dt(h.at)}</span><span class="a">${ACTION_L[h.action]||esc(h.action)}</span><span class="d">${d}</span><span class="u">${esc(h.actor||'')}</span></div>`;}).join('');}
+
+/* ---------- forms ---------- */
+const DEFAULT_CATS=['シート','キャップ','フレーバー','ラベル','段ボール','フィルム','その他'];
+function editMaterial(id){
+  if(!S.sections.length){toast('先に「管理」でセクションを作成してください','err');return;}
+  const m=id?M.mat.get(id):{section_id:S.f.sec!=='all'?S.f.sec:S.sections[0].id,unit:'個',locked:false};
+  const cats=[...new Set([...DEFAULT_CATS,...S.materials.map(x=>x.category).filter(Boolean)])];
+  formModal(`<div class="mt">${id?'資材の編集':'資材の追加'}</div><div class="ms">セクションのロック設定に応じてPINを求められます</div>
+   <label class="field"><span>セクション${id?'（登録後は変更できません）':''}</span><select name="section_id" ${id?'disabled':''}>${S.sections.map(s=>`<option value="${esc(s.id)}" ${s.id===m.section_id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></label>
+   <div class="grid2"><label class="field"><span>資材コード</span><input name="code" required value="${esc(m.code||'')}"></label><label class="field"><span>分類</span><input name="category" list="catList" value="${esc(m.category||'')}" placeholder="シート等"></label></div>
+   <label class="field"><span>資材名</span><input name="name" required value="${esc(m.name||'')}"></label>
+   <div class="grid2"><label class="field"><span>単位</span><input name="unit" value="${esc(m.unit||'個')}"></label><label class="field"><span>1パレット標準数量</span><input name="std_qty" type="number" step="any" min="0" inputmode="decimal" value="${m.std_qty??''}" placeholder="端数判定用"></label></div>
+   <label class="field"><span>メモ</span><textarea name="note" rows="2">${esc(m.note||'')}</textarea></label>
+   <label class="switch"><input type="checkbox" name="locked" ${m.locked?'checked':''}><i></i><span><b>この資材を個別ロック</b><small>セクション設定に関わらず、編集・移動ともにPINが必要になります</small></span></label>
+   <datalist id="catList">${cats.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+   <div class="row end">${id?`<button type="button" class="btn ghost danger" data-act="delMat" data-id="${id}">${ic('trash',16)}削除</button><div class="sp"></div>`:''}<button type="button" class="btn ghost" data-act="modalCancel">キャンセル</button><button class="btn primary" type="submit">保存</button></div>`,
+  async f=>{await upsertMaterial({id:id||null,section_id:id?m.section_id:fv(f,'section_id').value,code:fv(f,'code').value,name:fv(f,'name').value,category:fv(f,'category').value,unit:fv(f,'unit').value,std_qty:fv(f,'std_qty').value,note:fv(f,'note').value,locked:fv(f,'locked').checked});
+    toast('保存しました','ok');return true;});}
+function newPallets(id){const m=M.mat.get(id);if(!m)return;
+  formModal(`<div class="mt">パレット登録</div><div class="ms">${esc(m.name)} <span class="mono">${esc(m.code)}</span></div>
+   <div class="grid2"><label class="field"><span>パレット数</span><input name="count" type="number" min="1" max="100" value="1" required inputmode="numeric"></label>
+   <label class="field"><span>1パレットの数量 (${esc(m.unit)})</span><input name="qty" type="number" step="any" min="0" value="${m.std_qty??''}" required inputmode="decimal"></label></div>
+   <label class="field"><span>保管場所</span>${locSelect('loc',null)}</label>
+   <label class="field"><span>LOT（任意）</span><input name="lot"></label>
+   <label class="check"><input type="checkbox" name="print" checked>登録後、ラベルを印刷キューに追加</label>
+   <div class="row end"><button type="button" class="btn ghost" data-act="modalCancel">キャンセル</button><button class="btn primary" type="submit">登録</button></div>`,
+  async f=>{const codes=await createPallets(id,+fv(f,'count').value,fv(f,'qty').value,fv(f,'loc').value||null,fv(f,'lot').value);
+    const pr=fv(f,'print').checked;if(pr)addPrint(codes.map(c=>({t:'p',id:c})),true);
+    toast(`${codes.length}パレットを登録しました`,'ok',pr?{label:'印刷へ',fn:()=>{closeSheet();go('print');}}:null);return true;});}
+function editPalletQty(id){const p=M.pal.get(id);if(!p)return;const m=M.mat.get(p.material_id)||{};
+  const std=+m.std_qty>0?+m.std_qty:null;
+  formModal(`<div class="mt">数量・LOTの変更</div><div class="ms"><span class="mono">${esc(p.code)}</span> ・ ${esc(m.name)}</div>
+   <label class="field"><span>数量 (${esc(m.unit||'')})</span><div class="qty-row"><button type="button" class="btn" data-act="qtyStep" data-v="-1">−</button><input name="qty" type="number" step="any" min="0" value="${p.qty}" required inputmode="decimal" class="mono center"><button type="button" class="btn" data-act="qtyStep" data-v="1">+</button></div></label>
+   ${std?`<div class="chips" style="margin:-4px 0 10px"><button type="button" class="chip" data-act="qtySet" data-v="${std}">満 ${fmt(std)}</button><button type="button" class="chip" data-act="qtySet" data-v="${Math.round(std/2)}">半 ${fmt(Math.round(std/2))}</button></div><div class="muted sm" style="margin-bottom:12px">標準 ${fmt(std)} 未満は「端数」として表示されます。0になったら「使用済み」にしてください。</div>`:''}
+   <label class="field"><span>LOT</span><input name="lot" value="${esc(p.lot||'')}"></label>
+   <label class="field"><span>メモ</span><input name="note" value="${esc(p.note||'')}"></label>
+   <div class="row end"><button type="button" class="btn ghost" data-act="modalCancel">キャンセル</button><button class="btn primary" type="submit">保存</button></div>`,
+  async f=>{await updatePallet(id,fv(f,'qty').value,fv(f,'lot').value,fv(f,'note').value);toast('更新しました','ok');return true;});}
+async function movePallets(ids,to){if(!ids.length)return false;
+  const gs=groupForAuth(ids.map(id=>M.pal.get(id)).filter(Boolean),'move');
+  if(gs.length===1)await ensure(gs[0].sec,'move',gs[0].locked);  // ロックがあれば先にPIN
+  if(!to){const cur=ids.length===1?M.pal.get(ids[0])?.location_id:null;to=await pickLocation(`${ids.length}パレットの移動先`,cur);if(!to)return false;}
+  const n=await movePalletsTo(ids,to);
+  toast(`${n}パレットを ${locCode(to)} へ移動しました`,'ok');return true;}
+function addTray(ids){let n=0;ids.forEach(id=>{if(M.pal.has(id)&&!S.tray.includes(id)){S.tray.push(id);n++;}});saveTray();
+  toast(`一括移動トレイに${n}件追加（計${S.tray.length}件）`,'ok',{label:'移動へ',fn:()=>{closeSheet();S.scanMode='move';go('scan');}});}
+function addPrint(items,silent){let n=0;items.forEach(x=>{if(!S.printQ.some(q=>q.t===x.t&&q.id===x.id)){S.printQ.push(x);n++;}});savePrint();
+  if(!silent)toast(`印刷キューに${n}件追加`,'ok',{label:'印刷へ',fn:()=>{closeSheet();go('print');}});}
+
+/* ---------- LOCATIONS ---------- */
+function renderLocs(){
+  view.innerHTML=`<div class="page-h"><h1>保管場所</h1><span class="muted sm">${S.locations.length}か所</span></div>
+   <div class="search">${ic('search',18)}<input id="lq" placeholder="場所コード・名称・資材名" value="${esc(S.lq)}" autocomplete="off"></div><div id="locList"></div>`;
+  $('#lq').oninput=e=>{S.lq=e.target.value;renderLocList();};renderLocList();}
+function renderLocList(){const el=$('#locList');if(!el)return;const q=S.lq.trim().toLowerCase();
+  const byLoc=groupBy(S.pallets,'location_id');
+  const matNames=lid=>[...new Set((byLoc.get(lid)||[]).map(p=>M.mat.get(p.material_id)?.name).filter(Boolean))];
+  const ls=sortedLocs().filter(l=>!q||(l.code+' '+(l.name||'')+' '+(l.area||'')+' '+matNames(l.id).join(' ')).toLowerCase().includes(q));
+  const none=byLoc.get(null)||[];
+  const card=(l,ps,cls='')=>`<div class="lcard ${ps.length?'':'emptyloc'} ${cls}" data-act="openLoc" data-id="${l.id}"><div class="code">${esc(l.code)}</div><div class="nm">${esc(l.name||'')}</div><div class="cnt"><b>${ps.length}</b><small>PL</small>${ps.some(isFrac)?'<span class="badge frac" style="margin-left:6px">端数</span>':''}</div><div class="mats">${esc(matNames(l.id).join('・')||'空き')}</div></div>`;
+  el.innerHTML=(none.length&&!q?`<div class="sect-h">${ic('pin',14)}未設定</div><div class="lgrid">${card({id:'none',code:'未設定',name:'場所未登録のパレット'},none,'none')}</div>`:'')+
+   ([...groupLocs(ls)].map(([a,arr])=>`<div class="sect-h">${ic('pin',14)}${esc(a)}<span class="muted mono" style="font-weight:500">${arr.length}</span></div><div class="lgrid">${arr.map(l=>card(l,byLoc.get(l.id)||[])).join('')}</div>`).join('')||`<div class="empty" style="margin-top:14px">${S.locations.length?'該当なし':'場所が未登録です。「管理」から追加してください'}</div>`);}
+function openLocation(id){const isNone=id==='none';const l=isNone?{id:'none',code:'未設定',name:'保管場所が未設定のパレット'}:M.loc.get(id);if(!l){closeSheet();return;}
+  const pals=S.pallets.filter(p=>(p.location_id||'none')===id).sort((a,b)=>cmp(M.mat.get(a.material_id)?.code,M.mat.get(b.material_id)?.code)||cmp(a.code,b.code));
+  [...S.sel].forEach(x=>{if(!M.pal.has(x))S.sel.delete(x);});
+  const byMat=[...groupBy(pals,'material_id')];
+  openSheet(`<div class="sh-head"><div class="eyebrow">${ic('pin',13)}${esc(l.area||'LOCATION')}</div><h2 class="mono" style="font-size:28px">${esc(l.code)}</h2><div class="muted">${esc(l.name||'')}</div></div>
+   ${isNone?'':`<div class="pal-hero"><div class="qrbox">${qrSvg(qrText('l',l.code))}</div><div style="flex:1"><div class="eyebrow">在庫</div><div class="big mono">${pals.length}<small>パレット</small></div><div class="muted sm">${byMat.length}品目</div><div class="row" style="margin-bottom:0"><button class="btn sm" data-act="locPrint" data-id="${l.id}">${ic('print',15)}場所ラベル</button><button class="btn sm ghost" data-act="editLoc" data-id="${l.id}">${ic('edit',15)}編集</button></div></div></div>`}
+   ${byMat.map(([mid,ps])=>{const m=M.mat.get(mid)||{};return `<div class="group"><div class="group-h"><span>${esc(m.name||'?')}</span><span class="muted mono">${esc(m.code||'')} ・ ${ps.length}PL ・ ${fmt(sum(ps.map(p=>p.qty)))}${esc(m.unit||'')}</span><div class="sp"></div><button class="link" data-act="selAll" data-ids="${ps.map(p=>p.id).join(',')}">全選択</button></div>${ps.map(p=>palRow(p,{select:true,showMat:false,showLoc:false})).join('')}</div>`;}).join('')||'<div class="empty sm" style="margin-top:16px">この場所にパレットはありません</div>'}
+   ${selBar()}`,()=>openLocation(id));}
+
+/* ---------- SCAN ---------- */
+const Scan={stream:null,running:false,det:null,cv:document.createElement('canvas'),last:'',lastT:0,timer:null,
+  async start(){if(this.running)return;const v=$('#camVideo');if(!v)return;
+    if(!navigator.mediaDevices?.getUserMedia){setCamMsg('この開き方ではカメラを使えません。公開URL（https）から開いてください。下の入力欄やUSBスキャナは使えます。');return;}
+    try{this.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});}
+    catch(e){setCamMsg('カメラを起動できませんでした（'+(e.name||e.message)+'）。ブラウザのカメラ許可を確認してください。');return;}
+    if(S.tab!=='scan'||!$('#camVideo')){this.stream.getTracks().forEach(t=>t.stop());this.stream=null;return;}
+    const vv=$('#camVideo');vv.srcObject=this.stream;vv.muted=true;vv.setAttribute('playsinline','');await vv.play().catch(()=>{});
+    if(!this.det&&'BarcodeDetector' in window){try{const f=await BarcodeDetector.getSupportedFormats();if(f.includes('qr_code'))this.det=new BarcodeDetector({formats:['qr_code']});}catch(e){}}
+    this.running=true;$('#cam')?.classList.add('live');this.loop();},
+  stop(){this.running=false;clearTimeout(this.timer);if(this.stream){this.stream.getTracks().forEach(t=>t.stop());this.stream=null;}$('#cam')?.classList.remove('live');},
+  async loop(){if(!this.running)return;const v=$('#camVideo');
+    try{if(v&&v.readyState>=2&&v.videoWidth){let text=null;
+      if(this.det){const r=await this.det.detect(v);if(r.length)text=r[0].rawValue;}
+      else if(window.jsQR){const w=v.videoWidth,h=v.videoHeight,sc=Math.min(1,720/Math.max(w,h)),cw=Math.round(w*sc),ch=Math.round(h*sc);
+        this.cv.width=cw;this.cv.height=ch;const ctx=this.cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(v,0,0,cw,ch);
+        const r=jsQR(ctx.getImageData(0,0,cw,ch).data,cw,ch,{inversionAttempts:'dontInvert'});if(r)text=r.data;}
+      if(text){const now=Date.now();if(text!==this.last||now-this.lastT>2500){this.last=text;this.lastT=now;onScan(text,'cam');}}}}catch(e){}
+    this.timer=setTimeout(()=>this.loop(),130);}};
+function setCamMsg(t){const e=$('#camMsg');if(e)e.textContent=t;}
+let AC=null;function beep(ok=true){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime;o.type='sine';o.frequency.value=ok?1320:280;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.22,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+(ok?.13:.32));o.connect(g).connect(AC.destination);o.start(t);o.stop(t+.35);}catch(e){}}
+function feedback(ok){beep(ok);try{navigator.vibrate&&navigator.vibrate(ok?35:[70,50,70]);}catch(e){}if(ok){const c=$('#cam');if(c){c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');}}}
+async function onScan(text,src){
+  if($('#modal').classList.contains('open')||$('#pin').classList.contains('open'))return;
+  if(src==='cam'&&$('#sheet').classList.contains('open'))return;
+  const q=parseQR(text);
+  if(!q){feedback(false);toast('認識できないコード: '+String(text).slice(0,40),'err');return;}
+  const moveMode=S.tab==='scan'&&S.scanMode==='move';
+  if(q.type==='l'){const l=M.locByCode.get(q.code);if(!l){feedback(false);toast('未登録の場所: '+q.code,'err');return;}
+    feedback(true);if(moveMode){S.dest=l.id;renderTray();toast('移動先: '+locName(l.id),'ok');}else{S.sel.clear();openLocation(l.id);}return;}
+  const p=palByCode(q.code);
+  if(moveMode){if(!p){feedback(false);toast(q.code+' は在庫にありません','err');return;}
+    if(S.tray.includes(p.id)){feedback(true);toast('追加済み: '+p.code);return;}
+    S.tray.push(p.id);saveTray();feedback(true);renderTray();toast(`追加 ${p.code}・${M.mat.get(p.material_id)?.name||''}`,'ok');return;}
+  feedback(true);openPallet(q.code);}
+function renderScan(){
+  view.innerHTML=`<div class="scan">
+   <div class="seg"><button data-act="scanMode" data-m="lookup" class="${S.scanMode==='lookup'?'on':''}">${ic('search',16)}照会</button><button data-act="scanMode" data-m="move" class="${S.scanMode==='move'?'on':''}">${ic('move',16)}一括移動</button></div>
+   <div id="cam" class="cam"><video id="camVideo" playsinline muted></video><div class="reticle"><i></i><i></i><i></i><i></i><b></b></div>
+    <span class="cam-badge" id="camBadge">${S.scanMode==='move'?'一括移動モード':'照会モード'}</span>
+    <div class="cam-off"><button class="btn primary lg" data-act="camStart">${ic('cam')}カメラを起動</button><div id="camMsg" class="cam-msg">パレットまたは場所のQRコードを枠に合わせてください</div></div>
+    <button class="cam-stop" data-act="camStop" aria-label="停止">${ic('x',18)}</button></div>
+   <form id="manualForm" class="manual"><input id="manualIn" placeholder="コード入力 / USBスキャナ（P-000012, A-01）" autocomplete="off" autocapitalize="characters"><button class="btn" type="submit">${ic('arrow',18)}</button></form>
+   <div id="tray"></div></div>`;
+  $('#manualForm').onsubmit=e=>{e.preventDefault();const v=$('#manualIn').value.trim();if(v){onScan(v,'manual');$('#manualIn').value='';}};
+  renderTray();Scan.start();}
+function renderTray(){const el=$('#tray');if(!el)return;const b=$('#camBadge');if(b)b.textContent=S.scanMode==='move'?'一括移動モード':'照会モード';
+  if(S.scanMode!=='move'){el.innerHTML=`<div class="hint">${ic('qr',18)}<div>パレットQR → 資材情報と移動・数量変更<br>場所QR → その場所にあるパレット一覧</div></div>`;return;}
+  S.tray=S.tray.filter(id=>M.pal.has(id));saveTray();
+  const pals=S.tray.map(id=>M.pal.get(id));const dest=S.dest&&M.loc.get(S.dest);
+  el.innerHTML=`<div class="tray-head"><div><div class="eyebrow">${ic('tray',13)}一括移動トレイ</div><div class="big mono">${pals.length}<small>パレット</small></div></div>${pals.length?`<button class="btn ghost sm" data-act="trayClear">クリア</button>`:''}</div>
+   <div class="tray-list">${pals.reverse().map(p=>palRow(p,{remove:true})).join('')||'<div class="empty sm">移動するパレットのQRを続けて読み取ってください</div>'}</div>
+   <div class="dest ${dest?'set':''}" data-act="pickDest">${ic('pin',22)}<div><div class="eyebrow">移動先</div><div class="dest-name">${dest?esc(locName(dest.id)):'場所QRを読む / タップして選択'}</div></div>${ic('chev',18)}</div>
+   <button class="btn primary block lg" data-act="trayMove" ${pals.length&&dest?'':'disabled'}>${ic('move')}${pals.length}パレットを移動</button>`;}
+
+/* ---------- PRINT ---------- */
+function resolvePrint(){const items=S.printQ.map(q=>({...q,o:q.t==='p'?M.pal.get(q.id):M.loc.get(q.id)})).filter(x=>x.o);
+  if(S.ready&&items.length!==S.printQ.length){S.printQ=items.map(({t,id})=>({t,id}));savePrint();}return items;}
+function labelHtml(x){const L=S.layout==='2'?'L2':'L8';
+  if(x.t==='l'){const l=x.o;return `<div class="lbl ${L}"><div class="lq">${qrSvg(qrText('l',l.code))}</div><div class="li"><div class="l-sec">LOCATION${l.area?' ・ '+esc(l.area):''}</div><div class="l-loc">${esc(l.code)}</div><div class="l-name" style="font-weight:700">${esc(l.name||'')}</div></div></div>`;}
+  const p=x.o,m=M.mat.get(p.material_id)||{},s=secOf(m);
+  return `<div class="lbl ${L}"><div class="lq">${qrSvg(qrText('p',p.code))}</div><div class="li"><div class="l-sec">${esc(s?.name||'')}${m.category?' ・ '+esc(m.category):''}</div><div class="l-name">${esc(m.name||'')}</div><div class="l-code">${esc(m.code||'')}</div><div class="l-pal">${esc(p.code)}</div><div class="l-meta">${fmt(p.qty)} ${esc(m.unit||'')}${isFrac(p)?' <span class="l-frac">端数</span>':''}${p.lot?' ・ LOT '+esc(p.lot):''}</div></div></div>`;}
+function renderPrint(){const items=resolvePrint();const per=S.layout==='2'?2:8;const pages=Math.ceil(items.length/per);
+  view.innerHTML=`<div class="page-h"><h1>ラベル印刷</h1><span class="muted sm">${items.length}枚 ・ A4 ${pages}ページ</span></div>
+   <div class="card"><div class="seg"><button data-act="layout" data-v="8" class="${S.layout!=='2'?'on':''}">A4 8面（105×74mm）</button><button data-act="layout" data-v="2" class="${S.layout==='2'?'on':''}">A4 2面（大）</button></div>
+    <div class="row" style="margin-bottom:4px"><button class="btn primary lg" style="flex:1" data-act="doPrint" ${items.length?'':'disabled'}>${ic('print')}印刷する</button><button class="btn ghost lg" data-act="printClear" ${items.length?'':'disabled'}>クリア</button></div>
+    <div class="row" style="margin:6px 0 0"><button class="btn sm" data-act="printAddLocs">${ic('plus',14)}全場所のラベル</button><button class="btn sm" data-act="printAddFrac">${ic('plus',14)}端数パレット</button></div>
+    <div class="muted sm" style="margin-top:8px">印刷設定は「余白なし・倍率100%」で。パレット登録時や一覧の「ラベル」ボタンでここに追加されます。</div></div>
+   ${items.length?`<div class="lbl-prev" id="lprev">${labelHtml(items[0])}</div>`:''}
+   <div class="card">${items.map((x,i)=>{const isP=x.t==='p';const m=isP?M.mat.get(x.o.material_id):null;
+     return `<div class="lrow"><span class="pill ${isP?'ok':''}">${isP?'パレット':'場所'}</span><div class="main"><div class="mono" style="font-weight:700">${esc(x.o.code)}</div><div class="sub">${isP?esc(m?.name||''):esc(x.o.name||x.o.area||'')}</div></div><button class="icon-btn" data-act="printRemove" data-i="${i}">${ic('x',16)}</button></div>`;}).join('')||'<div class="empty sm">印刷キューは空です</div>'}</div>`;
+  const box=$('#lprev');if(box){const inner=box.firstElementChild;const w=inner.offsetWidth;const s=Math.min(1,box.clientWidth/w);inner.style.transform=`scale(${s})`;box.style.height=(inner.offsetHeight*s)+'px';box.style.width=(w*s)+'px';}}
+function doPrint(items){const per=S.layout==='2'?2:8;const L=S.layout==='2'?'L2':'L8';let html='';
+  for(let i=0;i<items.length;i+=per)html+=`<div class="ppage ${L}">${items.slice(i,i+per).map(labelHtml).join('')}</div>`;
+  $('#printArea').innerHTML=html;setTimeout(()=>window.print(),150);}
+
+/* ---------- export (backup) ---------- */
+function download(name,text,type){const blob=new Blob([text],{type});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);}
+const csvCell=v=>{const s=String(v??'');return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+const stamp=()=>{const d=new Date(),z=n=>String(n).padStart(2,'0');return `${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}`;};
+function exportStockCsv(){
+  const head=['パレットNo','セクション','分類','資材コード','資材名','数量','単位','端数','保管場所','エリア','LOT','メモ','更新日時','更新者'];
+  const rows=[...S.pallets].sort((a,b)=>cmp(M.mat.get(a.material_id)?.code,M.mat.get(b.material_id)?.code)||cmp(a.code,b.code)).map(p=>{const m=M.mat.get(p.material_id)||{};const l=M.loc.get(p.location_id)||{};
+    return [p.code,secOf(m)?.name||'',m.category||'',m.code||'',m.name||'',p.qty,m.unit||'',isFrac(p)?'端数':'',l.code||'未設定',l.area||'',p.lot||'',p.note||'',dt(p.updated_at),p.updated_by||''];});
+  download(`在庫一覧_${stamp()}.csv`,'﻿'+[head,...rows].map(r=>r.map(csvCell).join(',')).join('\r\n'),'text/csv');}
+async function exportAllJson(){
+  const used=await db.collection('pallets').where('status','==','used').get();
+  const ser=o=>JSON.parse(JSON.stringify(o,(k,v)=>v&&typeof v==='object'&&typeof v.toDate==='function'?v.toDate().toISOString():v));
+  const sec=S.sections.map(({acct,acct_uid,...r})=>r);
+  const data={app:'STOCKYARD',version:VERSION,exported_at:new Date().toISOString(),sections:sec,locations:S.locations,materials:S.materials,
+    pallets:[...S.pallets,...used.docs.map(d=>({id:d.id,...d.data()}))]};
+  download(`STOCKYARD_backup_${stamp()}.json`,JSON.stringify(ser(data),null,1),'application/json');}
+
+/* ---------- ADMIN ---------- */
+const COLORS=['#5ef0c4','#7aa2ff','#ffbf5a','#ff7eb6','#b69cff','#6ee7ff','#a3e635','#ff8a65'];
+function renderAdmin(){const c=cfg();
+  view.innerHTML=`<div class="page-h"><h1>管理</h1></div>
+   <section class="card"><div class="card-h">作業者</div><label class="field" style="margin:0"><span>名前（移動・数量変更の履歴に記録されます）</span><input id="actorIn" value="${esc(S.actor)}" placeholder="例: 瀧田"></label></section>
+   <section class="card"><div class="card-h">セクションとロック<div class="sp"></div><button class="btn sm" data-act="editSec" data-id="">${ic('plus',14)}追加</button></div>
+    <div class="muted sm" style="margin-bottom:6px">編集ロック＝資材・数量・登録の変更にPIN／移動ロック＝場所移動にPIN。セクションの追加・変更は管理者パスワードが必要です。</div><div id="secList"></div></section>
+   <section class="card"><div class="card-h">保管場所マスタ<div class="sp"></div><button class="btn sm ghost" data-act="bulkLoc">一括登録</button><button class="btn sm" data-act="editLoc" data-id="">${ic('plus',14)}追加</button></div><div id="locAdmin"></div></section>
+   <section class="card"><div class="card-h">資材マスタ<div class="sp"></div><button class="btn sm ghost" data-act="bulkMat">一括登録</button><button class="btn sm" data-act="addMat">${ic('plus',14)}追加</button></div><div class="muted sm" id="matCount"></div></section>
+   <section class="card"><div class="card-h">データの書き出し（バックアップ）</div><div class="row" style="margin:0"><button class="btn sm" data-act="expCsv">${ic('down',15)}在庫一覧CSV（Excel用）</button><button class="btn sm ghost" data-act="expJson">${ic('down',15)}全データ（JSON）</button></div><div class="muted sm" style="margin-top:8px">定期的に書き出しておくと、万一のときに復元できます。</div></section>
+   <section class="card"><div class="card-h">セキュリティ</div><div class="row" style="margin:0"><button class="btn sm" data-act="adminPin">${ic('lock',15)}管理者パスワードを変更</button><button class="btn sm ghost" data-act="lockAll">${ic('lock',15)}ロックする</button></div></section>
+   <section class="card"><div class="card-h">接続</div><div class="sub muted sm" style="word-break:break-all">Firebase: ${esc(c.fb.projectId)}<br>公開URL: ${esc(appBase()||'未設定（QRは「p=コード」形式）')}</div>
+    <div class="row"><button class="btn sm" data-act="setupQR">${ic('qr',15)}スマホ設定用QR</button><button class="btn sm ghost" data-act="connEdit">接続設定を変更</button></div></section>
+   <div class="foot muted">STOCKYARD v${VERSION}</div>`;
+  $('#actorIn').onchange=e=>{S.actor=e.target.value.trim();LS.set('sy_actor',S.actor);toast('保存しました','ok');};
+  renderAdminLists();}
+function renderAdminLists(){
+  const sl=$('#secList');if(sl)sl.innerHTML=S.sections.map(s=>{const n=S.materials.filter(m=>m.section_id===s.id).length;
+    return `<div class="lrow"><span class="dot" style="--c:${esc(s.color)}"></span><div class="main"><b>${esc(s.name)}</b> <span class="muted mono sm">${esc(s.id)}</span><div class="sub">${n}品目 ${s.lock_edit?`<span class="pill on">${ic('lock',11)}編集</span>`:'<span class="pill">編集 自由</span>'} ${s.lock_move?`<span class="pill on">${ic('lock',11)}移動</span>`:'<span class="pill">移動 自由</span>'} ${s.acct?'':'<span class="pill">PIN未設定</span>'}</div></div><button class="icon-btn" data-act="editSec" data-id="${esc(s.id)}">${ic('edit',16)}</button></div>`;}).join('')||'<div class="empty sm">セクションがありません</div>';
+  const la=$('#locAdmin');if(la){const cnt=groupBy(S.pallets,'location_id');la.innerHTML=sortedLocs().map(l=>`<div class="lrow"><div class="main"><b class="mono">${esc(l.code)}</b> <span class="muted sm">${esc(l.name||'')}</span><div class="sub">${esc(l.area||'その他')} ・ ${(cnt.get(l.id)||[]).length}PL</div></div><button class="icon-btn" data-act="locPrint" data-id="${l.id}">${ic('print',16)}</button><button class="icon-btn" data-act="editLoc" data-id="${l.id}">${ic('edit',16)}</button></div>`).join('')||'<div class="empty sm">場所がありません</div>';}
+  const mc=$('#matCount');if(mc)mc.textContent=`登録済み ${S.materials.length}品目。一覧・編集は「在庫」タブから。一括登録は1行1品目のCSV形式です。`;}
+function editSection(id){const s=id?M.sec.get(id):{id:'',name:'',color:COLORS[S.sections.length%COLORS.length],lock_edit:true,lock_move:false,sort:S.sections.length+1};
+  formModal(`<div class="mt">${id?'セクションの編集':'セクションの追加'}</div><div class="ms">管理者パスワードが必要です</div>
+   <div class="grid2"><label class="field"><span>ID（半角英小文字）</span><input name="id" required pattern="[a-z0-9_\\-]+" value="${esc(s.id)}" ${id?'readonly':''} placeholder="seizo"></label><label class="field"><span>名称</span><input name="name" required value="${esc(s.name)}" placeholder="製造"></label></div>
+   <div class="field"><span>カラー</span><div class="swatches">${COLORS.map(c=>`<label><input type="radio" name="color" value="${c}" ${c===s.color?'checked':''}><i style="--c:${c}"></i></label>`).join('')}</div></div>
+   <label class="switch"><input type="checkbox" name="lock_edit" ${s.lock_edit?'checked':''}><i></i><span><b>編集ロック</b><small>資材マスタ・数量・パレット登録/削除にPIN</small></span></label>
+   <label class="switch"><input type="checkbox" name="lock_move" ${s.lock_move?'checked':''}><i></i><span><b>移動ロック</b><small>保管場所の移動にPIN</small></span></label>
+   <div class="grid2"><label class="field"><span>${id?'新しいPIN（変更時のみ・6桁以上）':'PIN（6桁以上）'}</span><input name="pin" type="password" inputmode="numeric" ${id?'':'required minlength="6"'}></label><label class="field"><span>表示順</span><input name="sort" type="number" value="${s.sort??0}"></label></div>
+   <div class="row end">${id?`<button type="button" class="btn ghost danger" data-act="delSec" data-id="${esc(id)}">${ic('trash',16)}削除</button><div class="sp"></div>`:''}<button type="button" class="btn ghost" data-act="modalCancel">キャンセル</button><button class="btn primary" type="submit">保存</button></div>`,
+  async f=>{const col=f.querySelector('input[name=color]:checked');
+    await upsertSection({id:fv(f,'id').value.trim(),name:fv(f,'name').value,color:col?col.value:COLORS[0],lock_edit:fv(f,'lock_edit').checked,lock_move:fv(f,'lock_move').checked,sort:fv(f,'sort').value},fv(f,'pin').value.trim());
+    toast('保存しました','ok');return true;});}
+function editLocation(id){const l=id?M.loc.get(id):{code:'',name:'',area:'',sort:S.locations.length+1};
+  const areas=[...new Set(S.locations.map(x=>x.area).filter(Boolean))];
+  formModal(`<div class="mt">${id?'保管場所の編集':'保管場所の追加'}</div><div class="ms">管理者パスワードが必要です</div>
+   <div class="grid2"><label class="field"><span>場所コード</span><input name="code" required value="${esc(l.code)}" placeholder="A-01" autocapitalize="characters"></label><label class="field"><span>エリア</span><input name="area" list="areaList" value="${esc(l.area||'')}" placeholder="倉庫A"></label></div>
+   <label class="field"><span>名称・補足</span><input name="name" value="${esc(l.name||'')}" placeholder="例: 冷蔵庫前"></label>
+   <label class="field"><span>表示順</span><input name="sort" type="number" value="${l.sort??0}"></label>
+   <datalist id="areaList">${areas.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
+   <div class="row end">${id?`<button type="button" class="btn ghost danger" data-act="delLoc" data-id="${id}">${ic('trash',16)}削除</button><div class="sp"></div>`:''}<button type="button" class="btn ghost" data-act="modalCancel">キャンセル</button><button class="btn primary" type="submit">保存</button></div>`,
+  async f=>{await upsertLocation({id:id||null,code:fv(f,'code').value,name:fv(f,'name').value,area:fv(f,'area').value,sort:fv(f,'sort').value});toast('保存しました','ok');return true;});}
+function bulkLocations(){formModal(`<div class="mt">保管場所の一括登録</div><div class="ms">1行1か所「コード,名称,エリア」。同じコードは上書きされます。</div>
+  <label class="field"><textarea name="t" rows="8" class="mono" placeholder="A-01,,倉庫A&#10;A-02,,倉庫A&#10;L2-1,ライン2 横,ライン"></textarea></label>
+  <div class="row end"><button type="button" class="btn ghost" data-act="modalCancel">キャンセル</button><button class="btn primary" type="submit">登録</button></div>`,
+  async f=>{await ensure(null,'admin');const lines=fv(f,'t').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);let n=0;const base=S.locations.length;
+    for(const [i,ln] of lines.entries()){const [code,name,area]=ln.split(/[,\t]/).map(s=>(s||'').trim());if(!code)continue;
+      const ex=S.locations.find(l=>String(l.code).toUpperCase()===code.toUpperCase());
+      await upsertLocation({id:ex?.id||null,code,name,area,sort:ex?ex.sort:base+i+1});n++;}
+    toast(`${n}か所を登録しました`,'ok');return true;});}
+function bulkMaterials(){if(!S.sections.length){toast('先にセクションを作成してください','err');return;}
+  formModal(`<div class="mt">資材の一括登録</div><div class="ms">1行1品目「資材コード,資材名,分類,単位,1パレット標準数量」。登録済みのコードはスキップします。</div>
+  <label class="field"><span>セクション</span><select name="sec">${S.sections.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select></label>
+  <label class="field"><textarea name="t" rows="8" class="mono" placeholder="SH-500,PETシート 500ml,シート,枚,12000&#10;CP-28W,キャップ 28mm 白,キャップ,個,50000"></textarea></label>
+  <div class="row end"><button type="button" class="btn ghost" data-act="modalCancel">キャンセル</button><button class="btn primary" type="submit">登録</button></div>`,
+  async f=>{const sec=fv(f,'sec').value;await ensure(sec,'edit');const lines=fv(f,'t').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);let n=0,skip=0;
+    const seen=new Set(S.materials.map(m=>String(m.code).toUpperCase()));
+    for(const ln of lines){const [code,name,category,unit,std]=ln.split(/[,\t]/).map(s=>(s||'').trim());if(!code||!name)continue;
+      if(seen.has(code.toUpperCase())){skip++;continue;}
+      try{await upsertMaterial({section_id:sec,code,name,category,unit:unit||'個',std_qty:std||'',locked:false});seen.add(code.toUpperCase());n++;}
+      catch(e){if(e?.message===CANCEL)throw e;throw new Error(`${code}: ${errMsg(e)}（${n}件は登録済み）`);}}
+    toast(`${n}品目を登録しました${skip?`（${skip}件は登録済みのためスキップ）`:''}`,'ok');return true;});}
+function changeAdminPin(){formModal(`<div class="mt">管理者パスワードの変更</div><div class="ms">現在の管理者パスワードを求められます</div>
+  <label class="field"><span>新しいパスワード（6文字以上）</span><input name="a" type="password" required minlength="6"></label>
+  <label class="field"><span>確認</span><input name="b" type="password" required minlength="6"></label>
+  <div class="row end"><button type="button" class="btn ghost" data-act="modalCancel">キャンセル</button><button class="btn primary" type="submit">変更</button></div>`,
+  async f=>{const a=fv(f,'a').value.trim();if(a!==fv(f,'b').value.trim())throw new Error('確認用パスワードが一致しません');
+    await changeAdminPassword(a);toast('管理者パスワードを変更しました','ok');return true;});}
+
+/* ---------- setup screens ---------- */
+function connForm(err){const c=cfg();const v=c.fb.apiKey?`apiKey: "${c.fb.apiKey}",\nauthDomain: "${c.fb.authDomain}",\nprojectId: "${c.fb.projectId}",\nappId: "${c.fb.appId}"`:'';
+  return `<div class="field"><span>firebaseConfig（コンソールに表示される { } の中身をそのまま貼り付け）</span><textarea name="fbc" rows="7" class="mono" style="font-size:13px" placeholder='apiKey: "AIza...",&#10;authDomain: "xxxx.firebaseapp.com",&#10;projectId: "xxxx",&#10;...'>${esc(v)}</textarea></div>
+  <div class="field"><span>このアプリの公開URL（任意）</span><input name="app" value="${esc(c.app)}" placeholder="https://.../stockyard.html"></div>${err?`<div class="err">${esc(err)}</div>`:''}`;}
+function saveConn(f){const o=parseFbConfig(fv(f,'fbc').value);
+  if(!o.apiKey||!o.projectId)throw new Error('apiKey と projectId が読み取れません。firebaseConfig の中身を貼り付けてください');
+  LS.set('sy_fbcfg',{fb:o,app:fv(f,'app').value.trim()});location.reload();}
+function renderSetup(err){$('#nav').innerHTML='';$('#nav').style.display='none';
+  view.innerHTML=`<div class="setup"><div class="card" style="padding:22px"><div class="eyebrow">SETUP</div><h1 style="margin:6px 0 4px;font-size:24px">データベースに接続</h1><div class="muted sm" style="margin-bottom:16px">Firebaseの接続情報を貼り付けてください（この端末に保存されます）。</div>
+   <form id="setupF">${connForm(err)}<div class="err" id="setupErr"></div><button class="btn primary block lg" type="submit">接続する</button></form></div>
+   <div class="card"><div class="card-h">初回だけ必要な準備（自宅PCなどで）</div><ol><li>Firebaseでプロジェクトを作成</li><li>Authentication で「匿名」と「メール/パスワード」を有効化</li><li>Firestore Database を作成（東京 asia-northeast1）し、ルールに firestore.rules を貼って公開</li><li>ウェブアプリを登録し、表示された firebaseConfig を上に貼り付け</li></ol><div class="muted sm">詳しくは同梱の「セットアップ手順書」を参照してください。</div></div></div>`;
+  $('#setupF').onsubmit=e=>{e.preventDefault();try{saveConn(e.target);}catch(er){$('#setupErr').textContent=er.message;}};}
+function renderBootstrap(){$('#nav').innerHTML='';$('#nav').style.display='none';
+  view.innerHTML=`<div class="setup"><div class="card" style="padding:22px"><div class="eyebrow">FIRST SETUP</div><h1 style="margin:6px 0 4px;font-size:24px">初期設定</h1><div class="muted sm" style="margin-bottom:16px">データベースへの接続に成功しました。管理者パスワードと最初のセクションを設定します（最初の1回だけ）。</div>
+   <form id="bootF" autocomplete="off">
+    <div class="grid2"><label class="field"><span>管理者パスワード</span><input name="a" type="password" required minlength="6" placeholder="6文字以上"></label><label class="field"><span>確認</span><input name="b" type="password" required minlength="6" placeholder="もう一度"></label></div>
+    <div class="grid2"><label class="field"><span>最初のセクション名</span><input name="sn" required value="資材"></label><label class="field"><span>セクションID</span><input name="sid" required value="shizai" pattern="[a-z0-9_\\-]+" title="半角英小文字・数字"></label></div>
+    <label class="field"><span>このセクションのPIN（6桁以上の数字）</span><input name="pin" type="password" inputmode="numeric" required minlength="6"></label>
+    <label class="switch"><input type="checkbox" name="sample" checked><i></i><span><b>サンプルの保管場所を作る</b><small>A-01, A-02, B-01（あとで編集・削除できます）</small></span></label>
+    <div class="err" id="bootErr"></div><button class="btn primary block lg" type="submit">設定して開始</button></form></div></div>`;
+  const f=$('#bootF');
+  f.onsubmit=async e=>{e.preventDefault();$('#bootErr').textContent='';f.classList.add('busy');
+    try{const a=fv(f,'a').value.trim();if(a!==fv(f,'b').value.trim())throw new Error('確認用パスワードが一致しません');
+      await auth.setPersistence(P().SESSION);
+      try{await auth.createUserWithEmailAndPassword(ADMIN_EMAIL,a);}
+      catch(er){if(er.code==='auth/email-already-in-use')await auth.signInWithEmailAndPassword(ADMIN_EMAIL,a);else throw er;}
+      const uid=auth.currentUser.uid;
+      const b=db.batch();
+      b.set(db.collection('roles').doc(uid),{admin:true,sections:[],label:'管理者'});
+      b.set(db.collection('meta').doc('bootstrap'),{admin_uid:uid,at:TS()});
+      await b.commit();await loadRole();
+      await upsertSection({id:fv(f,'sid').value.trim(),name:fv(f,'sn').value.trim(),color:COLORS[0],lock_edit:true,lock_move:false,sort:1},fv(f,'pin').value.trim());
+      if(fv(f,'sample').checked){const sb=db.batch();[['A-01','倉庫A',1],['A-02','倉庫A',2],['B-01','倉庫B',10]].forEach(([code,area,sort])=>sb.set(db.collection('locations').doc(),{code,name:null,area,sort,active:true}));await sb.commit();}
+      toast('初期設定が完了しました','ok');await startApp();S.tab='admin';render();
+    }catch(er){$('#bootErr').textContent=errMsg(er);}finally{f.classList.remove('busy');}};}
+
+/* ---------- actions ---------- */
+const ACT={
+ go:d=>go(d.tab),closeSheet:()=>closeSheet(),modalCancel:()=>closeModal(null),modalOk:()=>closeModal(true),pinCancel:()=>closePin(false),
+ pickLoc:d=>closeModal(d.id),
+ openMat:d=>{S.sel.clear();openMaterial(d.id);},openPal:d=>openPallet(d.id),openLoc:d=>{S.sel.clear();openLocation(d.id);},
+ secFilter:d=>{S.f.sec=d.v;renderStock();},catFilter:d=>{S.f.cat=d.v;renderStock();},
+ selToggle:d=>{S.sel.has(d.id)?S.sel.delete(d.id):S.sel.add(d.id);refreshSheet();},
+ selAll:d=>{const ids=d.ids.split(',').filter(Boolean);const all=ids.every(i=>S.sel.has(i));ids.forEach(i=>all?S.sel.delete(i):S.sel.add(i));refreshSheet();},
+ selMove:()=>run(async()=>{if(await movePallets([...S.sel])){S.sel.clear();refreshSheet();}}),
+ selTray:()=>{addTray([...S.sel]);S.sel.clear();refreshSheet();},
+ selPrint:()=>{addPrint([...S.sel].map(id=>({t:'p',id})));S.sel.clear();refreshSheet();},
+ selUse:()=>run(async()=>{const ids=[...S.sel];if(!await confirmDlg(`${ids.length}パレットを使用済み（在庫から除外）にしますか？`,'使用済みにする'))return;
+   await setStatus(ids,'used');S.sel.clear();toast('使用済みにしました','ok');refreshSheet();}),
+ addMat:()=>editMaterial(null),editMat:d=>editMaterial(d.id),newPallets:d=>newPallets(d.id),
+ delMat:d=>run(async()=>{closeModal(null);if(!await confirmDlg('この資材を削除しますか？','削除する',true))return;await deleteMaterial(d.id);closeSheet();toast('削除しました','ok');}),
+ palMove:d=>run(()=>movePallets([d.id])),palQty:d=>editPalletQty(d.id),palTray:d=>addTray([d.id]),palPrint:d=>addPrint([{t:'p',id:d.id}]),
+ palUse:d=>run(async()=>{if(!await confirmDlg('このパレットを使用済み（在庫から除外）にしますか？','使用済みにする'))return;await setStatus([d.id],'used');toast('使用済みにしました','ok');openPallet(d.id);}),
+ palRestore:d=>run(async()=>{const s=await db.collection('pallets').doc(d.id).get();if(!s.exists)return;await setStatus([],'active',[{id:s.id,...s.data()}]);toast('在庫に戻しました','ok');setTimeout(()=>openPallet(d.id),300);}),
+ palDel:d=>run(async()=>{const p=M.pal.get(d.id);if(!p)return;if(!await confirmDlg('このパレットを完全に削除します。登録ミスの取り消し用です。','削除する',true))return;await deletePallet(p);closeSheet();toast('削除しました','ok');}),
+ qtyStep:(d,t)=>{const i=t.closest('form').elements.namedItem('qty');i.value=Math.max(0,(+i.value||0)+(+d.v));},
+ qtySet:(d,t)=>{t.closest('form').elements.namedItem('qty').value=d.v;},
+ scanMode:(d,t)=>{S.scanMode=d.m;$$('.seg button',t.parentElement).forEach(b=>b.classList.toggle('on',b.dataset.m===d.m));renderTray();},
+ camStart:()=>Scan.start(),camStop:()=>Scan.stop(),
+ trayRemove:d=>{S.tray=S.tray.filter(x=>x!==d.id);saveTray();renderTray();},
+ trayClear:()=>{S.tray=[];S.dest=null;saveTray();renderTray();},
+ pickDest:()=>run(async()=>{const id=await pickLocation('移動先を選択',S.dest);if(id){S.dest=id;renderTray();}}),
+ trayMove:()=>run(async()=>{const ids=S.tray.filter(id=>M.pal.has(id));if(await movePallets(ids,S.dest)){S.tray=[];S.dest=null;saveTray();renderTray();}}),
+ layout:d=>{S.layout=d.v;LS.set('sy_layout',d.v);renderPrint();},
+ doPrint:()=>doPrint(resolvePrint()),
+ printClear:()=>run(async()=>{if(!await confirmDlg('印刷キューを空にしますか？','クリア'))return;S.printQ=[];savePrint();renderPrint();}),
+ printRemove:d=>{S.printQ.splice(+d.i,1);savePrint();renderPrint();},
+ printAddLocs:()=>{addPrint(sortedLocs().map(l=>({t:'l',id:l.id})),true);renderPrint();},
+ printAddFrac:()=>{addPrint(S.pallets.filter(isFrac).map(p=>({t:'p',id:p.id})),true);renderPrint();},
+ locPrint:d=>addPrint([{t:'l',id:d.id}]),
+ editSec:d=>editSection(d.id||null),editLoc:d=>editLocation(d.id||null),bulkLoc:()=>bulkLocations(),bulkMat:()=>bulkMaterials(),adminPin:()=>changeAdminPin(),
+ delSec:d=>run(async()=>{closeModal(null);if(!await confirmDlg('このセクションを削除しますか？','削除する',true))return;await deleteSection(d.id);toast('削除しました','ok');}),
+ delLoc:d=>run(async()=>{closeModal(null);if(!await confirmDlg('この場所を削除しますか？置かれているパレットは「未設定」になります。','削除する',true))return;await deleteLocation(d.id);closeSheet();toast('削除しました','ok');}),
+ lockAll:()=>run(async()=>{if(!S.role){toast('すでにロックされています');return;}await lockAll();toast('ロックしました','ok');if(S.ready)refreshViews();}),
+ expCsv:()=>exportStockCsv(),expJson:()=>run(exportAllJson),
+ setupQR:()=>{const b=appBase();if(!b){toast('公開URLで開いたとき（または公開URL設定後）に作成できます','err');return;}const c=cfg();
+   modal(`<div class="mt">スマホ設定用QR</div><div class="ms">スマホの標準カメラで読み取ると、接続設定が保存された状態でアプリが開きます。社外に出さないでください。</div><div class="qrbox" style="width:240px;height:240px;margin:0 auto 16px">${qrSvg(b+'#cfg='+encodeURIComponent(b64e(JSON.stringify({fb:c.fb,app:c.app}))))}</div><div class="row end"><button class="btn primary" data-act="modalCancel">閉じる</button></div>`);},
+ connEdit:()=>{formModal(`<div class="mt">接続設定</div><div class="ms">保存するとアプリを再読み込みします（この端末ではHTML内のCONFIGより優先されます）</div>${connForm()}<div class="row end"><button type="button" class="btn ghost" data-act="modalCancel">キャンセル</button><button class="btn primary" type="submit">保存</button></div>`,async f=>{saveConn(f);return true;});},
+};
+document.addEventListener('click',e=>{const t=e.target.closest('[data-act]');if(!t||t.disabled)return;const fn=ACT[t.dataset.act];if(!fn)return;e.preventDefault();fn(t.dataset,t,e);});
+document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if($('#pin').classList.contains('open'))closePin(false);else if($('#modal').classList.contains('open'))closeModal(null);else if($('#sheet').classList.contains('open'))closeSheet();});
+document.addEventListener('visibilitychange',()=>{if(!S.ready)return;if(document.hidden){Scan.stop();}else if(S.tab==='scan')Scan.start();});
+
+/* ---------- boot ---------- */
+function handleHash(cfgOnly){const h=location.hash.replace(/^#/,'');if(!h)return;const ps=new URLSearchParams(h);
+  if(ps.get('cfg')){try{const o=JSON.parse(b64d(ps.get('cfg')));if(o.fb&&o.fb.apiKey){LS.set('sy_fbcfg',o);setTimeout(()=>toast('接続設定を保存しました','ok'),800);}}catch(e){}history.replaceState(null,'',location.pathname+location.search);return;}
+  if(cfgOnly)return;const p=ps.get('p'),l=ps.get('l');if(!p&&!l)return;history.replaceState(null,'',location.pathname+location.search);
+  if(p)openPallet(p);else{const lo=M.locByCode.get(String(l).toUpperCase());lo?openLocation(lo.id):toast('未登録の場所: '+l,'err');}}
+let started=false;
+async function startApp(){if(started)return;started=true;
+  view.innerHTML='<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
+  await listen();S.ready=true;render();handleHash(false);
+  window.addEventListener('hashchange',()=>handleHash(false));}
+async function init(){
+  handleHash(true);renderNav();updateLockBtn();
+  const c=cfg();if(!c.fb.apiKey||!c.fb.projectId){renderSetup();return;}
+  if(!window.firebase||!firebase.firestore||!firebase.auth){renderSetup('Firebaseの部品を読み込めません（ネットワークを確認してください）');return;}
+  try{
+    fbApp=firebase.initializeApp({apiKey:c.fb.apiKey,authDomain:c.fb.authDomain||c.fb.projectId+'.firebaseapp.com',projectId:c.fb.projectId,appId:c.fb.appId||undefined});
+    auth=fbApp.auth();db=fbApp.firestore();
+    try{db.settings({experimentalAutoDetectLongPolling:true,merge:true});}catch(e){}
+    try{await db.enablePersistence({synchronizeTabs:true});}catch(e){}
+    view.innerHTML='<div class="skeleton"></div><div class="skeleton"></div>';
+    await new Promise(r=>{const un=auth.onAuthStateChanged(()=>{un();r();});});
+    if(!auth.currentUser)await signInAnon();
+    await loadRole();
+    auth.onAuthStateChanged(async u=>{if(!u){try{await signInAnon();}catch(e){}}await loadRole();if(S.ready)refreshViews();});
+    const boot=await db.collection('meta').doc('bootstrap').get();
+    if(!boot.exists){renderBootstrap();return;}
+    await startApp();
+  }catch(e){renderSetup('接続できません: '+errMsg(e)+(e?.code?` [${e.code}]`:''));}
+}
+init();
+
+</script>
+</body>
+</html>
