@@ -359,7 +359,7 @@ const CONFIG = {
   },
   APP_URL: ''  // このHTMLの公開URL (QRをスマホ標準カメラで読んでも開けるようになる)
 };
-const VERSION='2.0 (Firebase)';
+const VERSION='2.1 (Firebase)';
 const ADMIN_EMAIL='admin@stockyard.app';
 const CANCEL='キャンセルしました';
 
@@ -423,7 +423,7 @@ const M={sec:new Map(),mat:new Map(),loc:new Map(),pal:new Map(),locByCode:new M
 const view=$('#view');
 const saveTray=()=>SS.set('sy_tray',S.tray);
 const savePrint=()=>LS.set('sy_printq',S.printQ);
-const actor=()=>S.actor||null;
+const actor=()=>S.actor||(S.role&&S.role.admin?S.role.label:null)||null;
 const secOf=m=>M.sec.get(m?.section_id);
 const isFrac=p=>{const m=M.mat.get(p.material_id);return !!(m&&+m.std_qty>0&&+p.qty<+m.std_qty);};
 const locCode=id=>M.loc.get(id)?.code||'未設定';
@@ -451,7 +451,7 @@ async function ensure(sec,kind,locked=false){
   if(!needs(sec,kind,locked))return;
   const ok=await askPin(kind==='admin'?'__admin__':sec);
   if(!ok||needs(sec,kind,locked))throw new Error(CANCEL);}
-function roleLabel(){if(!S.role)return '';if(S.role.admin)return '管理者';
+function roleLabel(){if(!S.role)return '';if(S.role.admin)return S.role.label&&S.role.label!=='管理者'?'管理者：'+S.role.label:'管理者';
   return (S.role.sections||[]).map(id=>M.sec.get(id)?.name||id).join('・')||'解除中';}
 function updateLockBtn(){const b=$('#lockBtn');if(!b)return;const on=!!S.role;b.className='lockbtn'+(on?' open':'');
   b.innerHTML=on?`${ic('unlock',15)}${esc(roleLabel())}`:ic('lock',15);b.title=on?'ロック解除中 (タップでロック)':'ロック中';}
@@ -501,7 +501,7 @@ function errMsg(e){const c=e?.code||'';const m=e?.message||String(e);
 async function run(fn){try{busy(true);return await fn();}catch(e){if(e?.message!==CANCEL)toast(errMsg(e),'err');}finally{busy(false);}}
 const TS=()=>firebase.firestore.FieldValue.serverTimestamp();
 const mvRef=()=>db.collection('movements').doc();
-function logMove(b,pid,o){b.set(mvRef(),{pallet_id:pid,action:o.action,from_location:o.from??null,to_location:o.to??null,qty_before:o.qb??null,qty_after:o.qa??null,actor:actor(),section_id:o.sec||null,at:TS()});}
+function logMove(b,pid,o){b.set(mvRef(),{pallet_id:pid,action:o.action,from_location:o.from??null,to_location:o.to??null,qty_before:o.qb??null,qty_after:o.qa??null,actor:actor(),by:S.role?.label||null,section_id:o.sec||null,at:TS()});}
 
 /* ---------- write operations ---------- */
 function cleanMat(p,o){return{section_id:p.section_id,code:String(p.code||'').trim(),name:String(p.name||'').trim(),
@@ -604,6 +604,43 @@ async function upsertLocation(p){await ensure(null,'admin');
   const d={code,name:String(p.name||'').trim()||null,area:String(p.area||'').trim()||null,sort:+p.sort||0,active:true};
   if(id)await db.collection('locations').doc(id).set(d);else await db.collection('locations').add(d);}
 async function deleteLocation(id){await ensure(null,'admin');await db.collection('locations').doc(id).delete();}
+/* ---------- 管理者ユーザー ---------- */
+const normId=s=>String(s||'').trim().toLowerCase();
+async function loginEmail(id){id=normId(id)||'admin';
+  try{const d=await db.collection('logins').doc(id).get();if(d.exists)return d.data().email;}catch(e){}
+  return id==='admin'?ADMIN_EMAIL:null;}
+async function loadAdmins(){
+  const [roles,logins,boot]=await Promise.all([db.collection('roles').where('admin','==',true).get(),db.collection('logins').get(),db.collection('meta').doc('bootstrap').get()]);
+  const byUid=new Map(logins.docs.map(d=>[d.data().uid,{id:d.id,...d.data()}]));
+  const bootUid=boot.exists?boot.data().admin_uid:null;
+  return roles.docs.map(d=>{const r=d.data();const l=byUid.get(d.id);
+    return{uid:d.id,name:r.label||'管理者',login_id:l?l.id:(d.id===bootUid?'admin':(r.login_id||'?')),me:d.id===auth.currentUser?.uid};})
+    .sort((a,b)=>(a.login_id==='admin'?-1:0)-(b.login_id==='admin'?-1:0)||cmp(a.login_id,b.login_id));}
+async function newAdminAccount(id,pw){
+  const sec2=firebase.apps.find(a=>a.name==='secmaker')||firebase.initializeApp(fbApp.options,'secmaker');
+  const a2=sec2.auth();await a2.setPersistence(P().NONE);
+  const email=`adm-${id}-${Date.now().toString(36)}@stockyard.app`;
+  const cr=await a2.createUserWithEmailAndPassword(email,pw);const uid=cr.user.uid;await a2.signOut();return{email,uid};}
+async function addAdmin(name,id,pw){await ensure(null,'admin');id=normId(id);name=String(name||'').trim();
+  if(!name)throw new Error('名前を入力してください');
+  if(!/^[a-z0-9_-]{2,20}$/.test(id))throw new Error('ログインIDは半角英小文字・数字・_ - で2〜20文字にしてください');
+  if(String(pw).length<6)throw new Error('パスワードは6文字以上にしてください');
+  if(id==='admin'||(await db.collection('logins').doc(id).get()).exists)throw new Error('このログインIDは使われています');
+  const a=await newAdminAccount(id,String(pw));const b=db.batch();
+  b.set(db.collection('roles').doc(a.uid),{admin:true,sections:[],label:name,login_id:id});
+  b.set(db.collection('logins').doc(id),{email:a.email,uid:a.uid,name});await b.commit();}
+async function reissueAdmin(ad,pw){await ensure(null,'admin');
+  if(String(pw).length<6)throw new Error('パスワードは6文字以上にしてください');
+  const a=await newAdminAccount(ad.login_id,String(pw));const b=db.batch();
+  b.delete(db.collection('roles').doc(ad.uid));
+  b.set(db.collection('roles').doc(a.uid),{admin:true,sections:[],label:ad.name,login_id:ad.login_id});
+  b.set(db.collection('logins').doc(ad.login_id),{email:a.email,uid:a.uid,name:ad.name});await b.commit();}
+async function removeAdmin(ad,all){await ensure(null,'admin');
+  if(ad.me)throw new Error('自分自身は削除できません（他の管理者に依頼してください）');
+  if(all.length<=1)throw new Error('管理者が1人もいなくなるため削除できません');
+  const b=db.batch();b.delete(db.collection('roles').doc(ad.uid));
+  if(ad.login_id!=='admin'||(await db.collection('logins').doc('admin').get()).exists)b.delete(db.collection('logins').doc(ad.login_id));
+  await b.commit();}
 async function changeAdminPassword(pw){await ensure(null,'admin');
   if(String(pw).length<6)throw new Error('パスワードは6桁以上にしてください');
   await auth.currentUser.updatePassword(String(pw));}
@@ -624,23 +661,33 @@ function formModal(html,handler){const p=modal(`<form id="mf" autocomplete="off"
 const fv=(f,n)=>f.elements.namedItem(n);
 function confirmDlg(msg,ok='OK',danger=false){return modal(`<div class="mt" style="font-size:16px;line-height:1.5">${esc(msg)}</div><div class="row end" style="margin-top:18px"><button class="btn ghost" data-act="modalCancel">キャンセル</button><button class="btn ${danger?'danger':'primary'}" data-act="modalOk">${esc(ok)}</button></div>`).then(v=>!!v);}
 function askPin(scope){
-  const isAdm=scope==='__admin__';const sec=isAdm?null:M.sec.get(scope);
-  const label=isAdm?'管理者':(sec?.name||scope);
+  let adm=scope==='__admin__';const sec=adm?null:M.sec.get(scope);
   return new Promise(res=>{
     if(S.pinResolve)S.pinResolve(false);S.pinResolve=res;
-    $('#pin .pin-body').innerHTML=`<div class="mh"><div class="mh-ic">${ic('lock',22)}</div><div><div class="mt">${esc(label)} の${isAdm?'パスワード':'PIN'}</div><div class="ms" style="margin:0">この操作はロックされています。${isAdm?'':'管理者パスワードでも解除できます。'}</div></div></div>
-    <form id="pinForm" autocomplete="off"><input id="pinIn" class="pin-input mono" type="password" ${isAdm?'':'inputmode="numeric"'} placeholder="••••••"><div class="err" id="pinErr"></div>
-    <div class="row end"><button type="button" class="btn ghost" data-act="pinCancel">キャンセル</button><button class="btn primary" type="submit">${ic('unlock',18)}解除</button></div></form>`;
-    $('#pin').classList.add('open');setTimeout(()=>$('#pinIn')?.focus(),60);
-    $('#pinForm').onsubmit=async e=>{e.preventDefault();const v=$('#pinIn').value.trim();if(!v)return;const f=$('#pinForm');f.classList.add('busy');
-      const bad=c=>/wrong-password|invalid-credential|invalid-login|user-not-found|invalid-email|missing-password/.test(c||'');
-      try{
-        if(!isAdm&&sec?.acct){try{await signInAs(sec.acct,v);closePin(true);return;}catch(err){if(!bad(err.code))throw err;}}
-        try{await signInAs(ADMIN_EMAIL,v);closePin(true);return;}catch(err){if(!bad(err.code))throw err;}
-        $('#pinErr').textContent=(!isAdm&&!sec?.acct)?'このセクションのPINが未設定です（管理者パスワードで解除できます）':'PINが違います';
-        $('#pinIn').value='';f.classList.remove('shake');void f.offsetWidth;f.classList.add('shake');
-      }catch(err){$('#pinErr').textContent=errMsg(err);}
-      finally{f.classList.remove('busy');}};
+    const draw=()=>{
+      $('#pin .pin-body').innerHTML=`<div class="mh"><div class="mh-ic">${ic('lock',22)}</div><div><div class="mt">${adm?'管理者でログイン':esc(sec?.name||scope)+' のPIN'}</div><div class="ms" style="margin:0">${adm?'ログインIDとパスワードを入力してください。':'この操作はロックされています。'}</div></div></div>
+      <form id="pinForm" autocomplete="off">
+       ${adm?`<input id="admId" class="mono" placeholder="ログインID（初期管理者は admin）" autocapitalize="none" style="margin-bottom:8px" value="${esc(LS.get('sy_admin_id','admin'))}">`:''}
+       <input id="pinIn" class="pin-input mono" type="password" ${adm?'':'inputmode="numeric"'} placeholder="••••••"><div class="err" id="pinErr"></div>
+       <div class="row end">${scope!=='__admin__'?`<button type="button" class="link" id="pinMode" style="margin-right:auto">${adm?'← セクションPINに戻る':'管理者でログイン'}</button>`:''}<button type="button" class="btn ghost" data-act="pinCancel">キャンセル</button><button class="btn primary" type="submit">${ic('unlock',18)}${adm?'ログイン':'解除'}</button></div></form>`;
+      const pm=$('#pinMode');if(pm)pm.onclick=()=>{adm=!adm;draw();};
+      setTimeout(()=>{(adm&&!$('#admId').value?$('#admId'):$('#pinIn'))?.focus();},60);
+      $('#pinForm').onsubmit=async e=>{e.preventDefault();const v=$('#pinIn').value.trim();if(!v)return;const f=$('#pinForm');f.classList.add('busy');
+        const bad=c=>/wrong-password|invalid-credential|invalid-login|user-not-found|invalid-email|missing-password/.test(c||'');
+        const fail=msg=>{$('#pinErr').textContent=msg;$('#pinIn').value='';f.classList.remove('shake');void f.offsetWidth;f.classList.add('shake');};
+        try{
+          if(adm){const id=normId($('#admId').value)||'admin';const email=await loginEmail(id);
+            if(!email){fail('ログインIDが見つかりません');return;}
+            try{await signInAs(email,v);}catch(err){if(bad(err.code)){fail('ログインIDかパスワードが違います');return;}throw err;}
+            if(!(S.role&&S.role.admin)){await signInAnon();await loadRole();fail('この管理者アカウントは無効になっています');return;}
+            LS.set('sy_admin_id',id);closePin(true);return;}
+          if(!sec?.acct){fail('このセクションのPINが未設定です（管理者でログインしてください）');return;}
+          try{await signInAs(sec.acct,v);closePin(true);return;}catch(err){if(!bad(err.code))throw err;}
+          fail('PINが違います');
+        }catch(err){$('#pinErr').textContent=errMsg(err);}
+        finally{f.classList.remove('busy');}};
+    };
+    draw();$('#pin').classList.add('open');
   });}
 function closePin(v){$('#pin').classList.remove('open');const r=S.pinResolve;S.pinResolve=null;updateLockBtn();if(v&&S.ready)refreshViews();r&&r(v);}
 function groupLocs(list){const g=new Map();for(const l of list){const a=l.area||'その他';if(!g.has(a))g.set(a,[]);g.get(a).push(l);}return g;}
@@ -766,7 +813,7 @@ async function loadHistory(pid){let rows=[];
     else if(h.action==='qty')d=`${fmt(h.qty_before)} → <b>${fmt(h.qty_after)}</b>`;
     else if(h.action==='create')d=`${fmt(h.qty_after)} @ ${esc(locCode(h.to_location))}`;
     else d=`${fmt(h.qty_after)}`;
-    return `<div class="hrow"><span class="t">${dt(h.at)}</span><span class="a">${ACTION_L[h.action]||esc(h.action)}</span><span class="d">${d}</span><span class="u">${esc(h.actor||'')}</span></div>`;}).join('');}
+    return `<div class="hrow"><span class="t">${dt(h.at)}</span><span class="a">${ACTION_L[h.action]||esc(h.action)}</span><span class="d">${d}</span><span class="u">${esc(h.actor||'')}${h.by&&h.by!==h.actor?' / '+esc(h.by):''}</span></div>`;}).join('');}
 
 /* ---------- forms ---------- */
 const DEFAULT_CATS=['シート','キャップ','フレーバー','ラベル','段ボール','フィルム','その他'];
@@ -941,13 +988,22 @@ function renderAdmin(){const c=cfg();
    <section class="card"><div class="card-h">保管場所マスタ<div class="sp"></div><button class="btn sm ghost" data-act="bulkLoc">一括登録</button><button class="btn sm" data-act="editLoc" data-id="">${ic('plus',14)}追加</button></div><div id="locAdmin"></div></section>
    <section class="card"><div class="card-h">資材マスタ<div class="sp"></div><button class="btn sm ghost" data-act="bulkMat">一括登録</button><button class="btn sm" data-act="addMat">${ic('plus',14)}追加</button></div><div class="muted sm" id="matCount"></div></section>
    <section class="card"><div class="card-h">データの書き出し（バックアップ）</div><div class="row" style="margin:0"><button class="btn sm" data-act="expCsv">${ic('down',15)}在庫一覧CSV（Excel用）</button><button class="btn sm ghost" data-act="expJson">${ic('down',15)}全データ（JSON）</button></div><div class="muted sm" style="margin-top:8px">定期的に書き出しておくと、万一のときに復元できます。</div></section>
-   <section class="card"><div class="card-h">セキュリティ</div><div class="row" style="margin:0"><button class="btn sm" data-act="adminPin">${ic('lock',15)}管理者パスワードを変更</button><button class="btn sm ghost" data-act="lockAll">${ic('lock',15)}ロックする</button></div></section>
+   <section class="card"><div class="card-h">管理者ユーザー<div class="sp"></div><button class="btn sm" data-act="addAdmin">${ic('plus',14)}追加</button></div>
+    <div class="muted sm" style="margin-bottom:6px">管理者は全セクションの解除・マスタ設定ができます。1人ずつログインIDとパスワードを持ち、履歴に名前が残ります。</div><div id="admList"></div></section>
+   <section class="card"><div class="card-h">セキュリティ</div><div class="row" style="margin:0"><button class="btn sm" data-act="adminPin">${ic('lock',15)}自分のパスワードを変更</button><button class="btn sm ghost" data-act="lockAll">${ic('lock',15)}ロックする</button></div></section>
    <section class="card"><div class="card-h">接続</div><div class="sub muted sm" style="word-break:break-all">Firebase: ${esc(c.fb.projectId)}<br>公開URL: ${esc(appBase()||'未設定（QRは「p=コード」形式）')}</div>
     <div class="row"><button class="btn sm" data-act="setupQR">${ic('qr',15)}スマホ設定用QR</button><button class="btn sm ghost" data-act="connEdit">接続設定を変更</button></div></section>
    <div class="foot muted">STOCKYARD v${VERSION}</div>`;
   $('#actorIn').onchange=e=>{S.actor=e.target.value.trim();LS.set('sy_actor',S.actor);toast('保存しました','ok');};
   renderAdminLists();}
+let ADM=[];
+async function refreshAdmins(){const el=$('#admList');if(!el)return;
+  if(!(S.role&&S.role.admin)){el.innerHTML=`<div class="empty sm">管理者でログインすると一覧が表示されます　<button class="link" data-act="admLogin">ログイン</button></div>`;return;}
+  try{ADM=await loadAdmins();}catch(e){el.innerHTML='<div class="empty sm">'+esc(errMsg(e))+'</div>';return;}
+  if(!$('#admList'))return;
+  $('#admList').innerHTML=ADM.map((a,i)=>`<div class="lrow"><div class="main"><b>${esc(a.name)}</b> ${a.me?'<span class="pill ok">自分</span>':''}<div class="sub">ログインID：<span class="mono">${esc(a.login_id)}</span></div></div><button class="btn sm ghost" data-act="admReissue" data-i="${i}">パスワード再発行</button>${a.me?'':`<button class="icon-btn" data-act="admRemove" data-i="${i}" aria-label="削除">${ic('trash',16)}</button>`}</div>`).join('');}
 function renderAdminLists(){
+  refreshAdmins();
   const sl=$('#secList');if(sl)sl.innerHTML=S.sections.map(s=>{const n=S.materials.filter(m=>m.section_id===s.id).length;
     return `<div class="lrow"><span class="dot" style="--c:${esc(s.color)}"></span><div class="main"><b>${esc(s.name)}</b> <span class="muted mono sm">${esc(s.id)}</span><div class="sub">${n}品目 ${s.lock_edit?`<span class="pill on">${ic('lock',11)}編集</span>`:'<span class="pill">編集 自由</span>'} ${s.lock_move?`<span class="pill on">${ic('lock',11)}移動</span>`:'<span class="pill">移動 自由</span>'} ${s.acct?'':'<span class="pill">PIN未設定</span>'}</div></div><button class="icon-btn" data-act="editSec" data-id="${esc(s.id)}">${ic('edit',16)}</button></div>`;}).join('')||'<div class="empty sm">セクションがありません</div>';
   const la=$('#locAdmin');if(la){const cnt=groupBy(S.pallets,'location_id');la.innerHTML=sortedLocs().map(l=>`<div class="lrow"><div class="main"><b class="mono">${esc(l.code)}</b> <span class="muted sm">${esc(l.name||'')}</span><div class="sub">${esc(l.area||'その他')} ・ ${(cnt.get(l.id)||[]).length}PL</div></div><button class="icon-btn" data-act="locPrint" data-id="${l.id}">${ic('print',16)}</button><button class="icon-btn" data-act="editLoc" data-id="${l.id}">${ic('edit',16)}</button></div>`).join('')||'<div class="empty sm">場所がありません</div>';}
@@ -1070,9 +1126,21 @@ const ACT={
  printAddFrac:()=>{addPrint(S.pallets.filter(isFrac).map(p=>({t:'p',id:p.id})),true);renderPrint();},
  locPrint:d=>addPrint([{t:'l',id:d.id}]),
  editSec:d=>editSection(d.id||null),editLoc:d=>editLocation(d.id||null),bulkLoc:()=>bulkLocations(),bulkMat:()=>bulkMaterials(),adminPin:()=>changeAdminPin(),
+ admLogin:()=>run(async()=>{await ensure(null,'admin');}),
+ addAdmin:()=>formModal(`<div class="mt">管理者の追加</div><div class="ms">追加する人の名前・ログインID・最初のパスワードを決めて、本人に伝えてください。</div>
+   <label class="field"><span>名前（履歴に表示）</span><input name="n" required placeholder="例: 山田"></label>
+   <label class="field"><span>ログインID（半角英小文字・数字）</span><input name="i" required autocapitalize="none" placeholder="例: yamada" pattern="[a-z0-9_\-]{2,20}"></label>
+   <label class="field"><span>パスワード（6文字以上）</span><input name="p" type="password" required minlength="6"></label>
+   <div class="row end"><button type="button" class="btn ghost" data-act="modalCancel">キャンセル</button><button class="btn primary" type="submit">追加</button></div>`,
+   async f=>{await addAdmin(fv(f,'n').value,fv(f,'i').value,fv(f,'p').value);toast('管理者を追加しました','ok');refreshAdmins();return true;}),
+ admReissue:d=>{const a=ADM[+d.i];if(!a)return;formModal(`<div class="mt">パスワード再発行</div><div class="ms">${esc(a.name)}（${esc(a.login_id)}）の新しいパスワードを設定します。古いパスワードは使えなくなります。${a.me?'<br><b>自分の場合は「自分のパスワードを変更」が簡単です。</b>':''}</div>
+   <label class="field"><span>新しいパスワード（6文字以上）</span><input name="p" type="password" required minlength="6"></label>
+   <div class="row end"><button type="button" class="btn ghost" data-act="modalCancel">キャンセル</button><button class="btn primary" type="submit">再発行</button></div>`,
+   async f=>{await reissueAdmin(a,fv(f,'p').value);toast('パスワードを再発行しました','ok');if(a.me){await lockAll();}refreshAdmins();return true;});},
+ admRemove:d=>run(async()=>{const a=ADM[+d.i];if(!a)return;if(!await confirmDlg(`${a.name}（${a.login_id}）を管理者から外しますか？`,'外す',true))return;await removeAdmin(a,ADM);toast('管理者から外しました','ok');refreshAdmins();}),
  delSec:d=>run(async()=>{closeModal(null);if(!await confirmDlg('このセクションを削除しますか？','削除する',true))return;await deleteSection(d.id);toast('削除しました','ok');}),
  delLoc:d=>run(async()=>{closeModal(null);if(!await confirmDlg('この場所を削除しますか？置かれているパレットは「未設定」になります。','削除する',true))return;await deleteLocation(d.id);closeSheet();toast('削除しました','ok');}),
- lockAll:()=>run(async()=>{if(!S.role){toast('すでにロックされています');return;}await lockAll();toast('ロックしました','ok');if(S.ready)refreshViews();}),
+ lockAll:()=>run(async()=>{if(!S.role){await ensure(null,'admin');if(S.ready)refreshViews();return;}await lockAll();toast('ロックしました','ok');if(S.ready)refreshViews();}),
  expCsv:()=>exportStockCsv(),expJson:()=>run(exportAllJson),
  setupQR:()=>{const b=appBase();if(!b){toast('公開URLで開いたとき（または公開URL設定後）に作成できます','err');return;}const c=cfg();
    modal(`<div class="mt">スマホ設定用QR</div><div class="ms">スマホの標準カメラで読み取ると、接続設定が保存された状態でアプリが開きます。社外に出さないでください。</div><div class="qrbox" style="width:240px;height:240px;margin:0 auto 16px">${qrSvg(b+'#cfg='+encodeURIComponent(b64e(JSON.stringify({fb:c.fb,app:c.app}))))}</div><div class="row end"><button class="btn primary" data-act="modalCancel">閉じる</button></div>`);},
